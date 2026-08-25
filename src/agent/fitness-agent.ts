@@ -1,4 +1,4 @@
-import { AnaliseIntencaoIA, Env, RegistroTreino, TipoTreino } from '../types/fitness.js';
+import { AnaliseIntencaoIA, Env, TipoTreino } from '../types/fitness.js';
 
 export class FitnessAgent {
   private env: Env;
@@ -9,16 +9,11 @@ export class FitnessAgent {
     this.agentName = agentName;
   }
 
-  /**
-   * Processa a mensagem do usuário do WhatsApp utilizando Workers AI
-   */
   public async processarMensagem(userId: string, mensagemTexto: string): Promise<string> {
     console.log(`[${this.agentName}] Recebida mensagem do usuário ${userId}: "${mensagemTexto}"`);
 
-    // 1. Executa a inferência de IA para interpretar intenção e extrair dados
     const analise = await this.interpretarComWorkersAI(mensagemTexto);
 
-    // 2. Executa a ação de acordo com a intenção
     switch (analise.intencaoIdentificada) {
       case 'REGISTRAR_TREINO':
         if (analise.dadosTreino) {
@@ -39,6 +34,15 @@ export class FitnessAgent {
         }
         break;
 
+      case 'REGISTRAR_AGUA':
+        if (analise.dadosAgua) {
+          return await this.executarRegistroAgua(
+            userId,
+            analise.dadosAgua.quantidadeMl
+          );
+        }
+        break;
+
       case 'CONVERSA_GERAL':
       default:
         return analise.respostaTextual;
@@ -47,24 +51,21 @@ export class FitnessAgent {
     return "Não consegui entender completamente seus dados de treino. Pode informar algo como: 'Fiz 45 min de spinning' ou 'Dei 8000 passos'?";
   }
 
-  /**
-   * Faz a chamada ao Cloudflare Workers AI utilizando um modelo de Raciocínio (Think)
-   */
   private async interpretarComWorkersAI(texto: string): Promise<AnaliseIntencaoIA> {
     const systemPrompt = `
 Você é o ${this.agentName}, um assistente virtual de fitness carismático, direto e motivador.
 Sua tarefa é analisar a mensagem do usuário e extrair os dados em formato JSON válido.
 Retorne APENAS um objeto JSON com o seguinte formato:
 {
-  "intencaoIdentificada": "REGISTRAR_TREINO" | "REGISTRAR_PASSOS" | "CONVERSA_GERAL",
-  "dadosTreino": { "tipo": "SPINNING" | "CALISTHENICS" | "WEIGHTLIFTING" | "WALKING" | "OTHER", "duracaoMinutos": number },
+  "intencaoIdentificada": "REGISTRAR_TREINO" | "REGISTRAR_PASSOS" | "REGISTRAR_AGUA" | "CONVERSA_GERAL",
+  "dadosTreino": { "tipo": "SPINNING" | "CALISTHENICS" | "WEIGHTLIFTING" | "WALKING" | "RUNNING" | "OTHER", "duracaoMinutos": number },
   "dadosPassos": { "quantidade": number },
+  "dadosAgua": { "quantidadeMl": number },
   "respostaTextual": "Sua mensagem motivacional aqui"
 }
     `;
 
     try {
-      // Executa a inferência no Cloudflare Workers AI
       const aiResponse: any = await this.env.AI.run('@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', {
         messages: [
           { role: 'system', content: systemPrompt },
@@ -73,8 +74,6 @@ Retorne APENAS um objeto JSON com o seguinte formato:
       });
 
       const rawText = aiResponse.response || '';
-
-      // Separa o raciocínio <think> da resposta JSON
       let pensamento = '';
       let jsonClean = rawText;
 
@@ -84,7 +83,6 @@ Retorne APENAS um objeto JSON com o seguinte formato:
         jsonClean = parts[1] ? parts[1].trim() : parts[0].trim();
       }
 
-      // Remove formatações markdown de código se houver (```json ... ```)
       jsonClean = jsonClean.replace(/```json/g, '').replace(/```/g, '').trim();
 
       const parsed: AnaliseIntencaoIA = JSON.parse(jsonClean);
@@ -97,9 +95,6 @@ Retorne APENAS um objeto JSON com o seguinte formato:
     }
   }
 
-  /**
-   * Regra de contingência caso a API de IA falhe
-   */
   private fallbackHeuristico(texto: string): AnaliseIntencaoIA {
     const t = texto.toLowerCase();
 
@@ -150,5 +145,15 @@ Retorne APENAS um objeto JSON com o seguinte formato:
       `• **Status:** ${pct}%\n` +
       `[${barra}]\n\n` +
       (pct >= 100 ? `🎉 Meta diária batida! Excelente mobilidade!` : `Faltam ${meta - quantidade} passos para a meta!`);
+  }
+
+  private async executarRegistroAgua(userId: string, quantidadeMl: number): Promise<string> {
+    const metaMl = 2000;
+    const percentual = Math.min(Math.round((quantidadeMl / metaMl) * 100), 100);
+
+    return `💧 **Água Registrada!**\n` +
+      `• **Quantidade:** ${quantidadeMl.toLocaleString('pt-BR')} ml\n` +
+      `• **Progresso:** ${percentual}% da meta diária de ${metaMl.toLocaleString('pt-BR')} ml\n\n` +
+      (percentual >= 100 ? `🎉 Meta de hidratação atingida!` : `Faltam ${(metaMl - quantidadeMl).toLocaleString('pt-BR')} ml para a meta!`);
   }
 }

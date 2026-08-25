@@ -1,46 +1,39 @@
-// Define as modalidades esportivas suportadas pelo agente
-export type TipoTreino = 'CALISTHENICS' | 'SPINNING' | 'WEIGHTLIFTING' | 'WALKING' | 'RUNNING' |
-'OTHER';
-// Interface do registro individual de treino
-export interface RegistroTreino {
- id: string;
- userId: string;
- tipo: TipoTreino;
- duracaoMinutos: number;
- caloriasEstimadas: number;
- data: string;
+export type TipoTreino = 'SPINNING' | 'CALISTHENICS' | 'WEIGHTLIFTING' | 'WALKING' | 'RUNNING' | 'OTHER';
+
+export interface DadosTreino {
+  tipo: TipoTreino;
+  duracaoMinutos: number;
 }
-// Interface das métricas de saúde diária
-export interface MetricasDiarias {
- userId: string;
- data: string;
- passos: number;
- metaPassos: number;
- aguaMl: number;
- metaAguaMl: number;
+
+export interface DadosPassos {
+  quantidade: number;
 }
-// Estrutura do resultado extraído pela IA
+
+export interface DadosAgua {
+  quantidadeMl: number;
+}
+
 export interface AnaliseIntencaoIA {
- intencaoIdentificada: 'REGISTRAR_TREINO' | 'REGISTRAR_PASSOS' | 'REGISTRAR_AGUA' |
-'CONSULTAR_PROGRESSO' | 'CONVERSA_GERAL';
- dadosTreino?: {
- tipo: TipoTreino;
- duracaoMinutos: number;
- };
- dadosPassos?: {
- quantidade: number;
- };
- dadosAgua?: {
- quantidadeMl: number;
- };
- pensamentoIa?: string; // Conteúdo extraído da tag <think>
- respostaTextual: string;
+  intencaoIdentificada: 'REGISTRAR_TREINO' | 'REGISTRAR_PASSOS' | 'REGISTRAR_AGUA' | 'CONVERSA_GERAL';
+  dadosTreino?: DadosTreino;
+  dadosPassos?: DadosPassos;
+  dadosAgua?: DadosAgua;
+  respostaTextual: string;
+  pensamentoIa?: string;
 }
-// Interface para as variáveis de ambiente e bindings do Cloudflare Worker
+
+export interface RegistroTreino {
+  id?: string;
+  userId: string;
+  tipo: TipoTreino;
+  duracaoMinutos: number;
+  calorias: number;
+  data: string;
+}
+
 export interface Env {
- AI: any; // Binding do Workers AI
- WA_VERIFY_TOKEN: string;
- WA_APP_SECRET: string;
- WA_API_ACCESS_TOKEN: string;
- WA_PHONE_NUMBER_ID: string;
+  AI: any;
+  WHATSAPP_VERIFY_TOKEN: string;
+  WHATSAPP_PHONE_NUMBER_ID: string;
+  WHATSAPP_API_TOKEN: string;
 }
