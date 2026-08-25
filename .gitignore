@@ -1,0 +1,40 @@
+# Dependencias instaladas pelo npm
+node_modules/
+
+# Variaveis de ambiente e segredos locais
+.env
+.env.*
+!.env.example
+
+# Arquivos gerados pelo Wrangler e pela Cloudflare
+.wrangler/
+
+# Saidas de compilacao e ferramentas de build
+dist/
+build/
+out/
+
+# Relatorios de testes e cobertura
+coverage/
+.nyc_output/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Cache de ferramentas
+.cache/
+.eslintcache
+
+# Arquivos do sistema operacional
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Configuracoes locais do editor
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json

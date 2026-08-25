@@ -90,6 +90,7 @@ whatsapp-fitness-agent/
     ├── index.ts
     ├── agent/
     └── types/
+    └── fitness.ts
 ```
 
 ### `src/index.ts`
@@ -118,15 +119,92 @@ A pasta está vazia no momento.
 
 Esta pasta foi criada para guardar tipos TypeScript compartilhados.
 
+Ela agora contém o arquivo `fitness.ts`, que descreve os formatos de dados usados pelo futuro agente. Esses tipos funcionam como etiquetas e formulários: deixam explícito quais informações existem e ajudam o TypeScript a avisar quando algo estiver no formato errado.
+
+### `src/types/fitness.ts`
+
+O arquivo reúne os contratos centrais do domínio fitness.
+
+#### `TipoTreino`
+
+```ts
+export type TipoTreino =
+  | 'CALISTHENICS'
+  | 'SPINNING'
+  | 'WEIGHTLIFTING'
+  | 'WALKING'
+  | 'RUNNING'
+  | 'OTHER';
+```
+
+Este é um **tipo união**. Em vez de aceitar qualquer texto, ele limita a modalidade a uma lista conhecida. Assim, `RUNNING` é válido, mas `CORRIDA_DE_CARRO` não é aceito por engano.
+
+#### `RegistroTreino`
+
+Representa um treino individual registrado pelo usuário. Ele guarda:
+
+- `id`: identificador do registro;
+- `userId`: identificador do usuário;
+- `tipo`: modalidade do treino;
+- `duracaoMinutos`: duração em minutos;
+- `caloriasEstimadas`: estimativa de calorias;
+- `data`: data do registro.
+
+Exemplo conceitual:
+
+```ts
+const treino: RegistroTreino = {
+  id: 'treino-001',
+  userId: 'usuario-001',
+  tipo: 'RUNNING',
+  duracaoMinutos: 30,
+  caloriasEstimadas: 280,
+  data: '2026-08-25'
+};
+```
+
+#### `MetricasDiarias`
+
+Representa o acompanhamento diário de hábitos. Os campos `passos` e `aguaMl` mostram o realizado; `metaPassos` e `metaAguaMl` mostram o objetivo do dia.
+
+Essa separação é importante porque permite responder perguntas como: “quantos passos faltam para minha meta?” ou “quanto de água já bebi?”.
+
+#### `AnaliseIntencaoIA`
+
+Representa o resultado esperado depois que a inteligência artificial interpretar uma mensagem.
+
+O campo `intencaoIdentificada` também usa uma lista limitada de opções:
+
+- `REGISTRAR_TREINO`;
+- `REGISTRAR_PASSOS`;
+- `REGISTRAR_AGUA`;
+- `CONSULTAR_PROGRESSO`;
+- `CONVERSA_GERAL`.
+
+Os campos `dadosTreino`, `dadosPassos` e `dadosAgua` são opcionais porque cada intenção precisa de informações diferentes. Uma mensagem sobre água não precisa carregar dados de treino.
+
+O campo `respostaTextual` guarda a resposta que poderá ser enviada ao usuário. `pensamentoIa` registra o conteúdo extraído da tag `<think>` e deverá ser avaliado com cuidado antes de ser exposto ou armazenado.
+
+#### `Env`
+
+Descreve as configurações disponíveis no ambiente do Cloudflare Worker:
+
+- `AI`: binding do Workers AI;
+- `WA_VERIFY_TOKEN`: token usado na verificação do webhook;
+- `WA_APP_SECRET`: segredo da aplicação;
+- `WA_API_ACCESS_TOKEN`: token de acesso à API do WhatsApp;
+- `WA_PHONE_NUMBER_ID`: identificador do número usado pela API.
+
+Esses nomes documentam o contrato entre o código e a infraestrutura. Os valores reais não devem ser escritos no código nem commitados no Git; devem ser configurados como segredos ou variáveis de ambiente.
+
 Possíveis tipos futuros:
 
 - formato da mensagem recebida do WhatsApp;
 - formato da resposta enviada;
-- configuração do agente;
 - estado de uma conversa;
-- variáveis disponíveis no ambiente do Worker.
+- configuração do agente;
 
-A pasta também está vazia no momento.
+Os tipos de entrada e saída do WhatsApp ainda precisam ser definidos.
 
 ## Capítulo 3 — O ecossistema Node.js e npm
 
@@ -334,6 +412,7 @@ Até agora, foram concluídas estas etapas:
 11. A observabilidade do Worker foi habilitada.
 12. O lockfile do npm foi gerado, registrando as dependências instaladas.
 13. O repositório Git foi inicializado com `git init`.
+14. O arquivo `src/types/fitness.ts` foi adicionado com os contratos de dados do domínio fitness.
 
 ## Capítulo 8 — O que ainda não foi feito
 
@@ -342,7 +421,7 @@ Os seguintes itens ainda estão pendentes:
 - implementação do handler HTTP em `src/index.ts`;
 - integração com a API do WhatsApp;
 - validação de autenticação e assinatura dos webhooks;
-- definição dos tipos das mensagens;
+- definição dos tipos das mensagens recebidas e enviadas pelo WhatsApp;
 - implementação da lógica do agente fitness;
 - integração efetiva com o binding `AI`;
 - configuração de variáveis de ambiente e segredos;
