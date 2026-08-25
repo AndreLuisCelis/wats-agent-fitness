@@ -36,9 +36,24 @@ export default {
           const respostaIA = await agent.processarMensagem(userId, textoMensagem);
 
           await responderWhatsApp(env, userId, respostaIA);
+
+          return new Response(JSON.stringify({
+            status: 'ok',
+            message: 'Mensagem processada com sucesso',
+            response: respostaIA
+          }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json; charset=utf-8' }
+          });
         }
 
-        return new Response('EVENT_RECEIVED', { status: 200 });
+        return new Response(JSON.stringify({
+          status: 'ok',
+          message: 'Evento recebido, mas nenhuma mensagem de texto foi processada'
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' }
+        });
       } catch (error) {
         console.error('[Webhook Error]:', error);
         return new Response('Erro Interno no Servidor', { status: 500 });

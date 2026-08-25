@@ -125,7 +125,7 @@ O arquivo agora exporta o `fetch` handler, função que recebe requisições HTT
 
 Quando a validação GET é bem-sucedida, o Worker devolve o `hub.challenge` com status `200`. Quando o token não confere, devolve status `403`.
 
-No POST, o código lê o JSON recebido, acessa o caminho esperado `entry[0].changes[0].value.messages[0]`, extrai o número do remetente e o texto, processa a mensagem e chama `responderWhatsApp` para devolver a resposta pela Meta Graph API.
+No POST, o código lê o JSON recebido, acessa o caminho esperado `entry[0].changes[0].value.messages[0]`, extrai o número do remetente e o texto, processa a mensagem e chama `responderWhatsApp` para devolver a resposta pela Meta Graph API. Depois, retorna um JSON com `status`, `message` e `response`, permitindo visualizar a confirmação diretamente no `curl`.
 
 Erros inesperados no processamento são registrados e retornam status `500`. Eventos sem mensagem de texto continuam recebendo `EVENT_RECEIVED` com status `200`, mas ainda não são processados pelo agente.
 
@@ -527,7 +527,7 @@ Esse trecho reserva um binding chamado `AI`. Bindings são referências nomeadas
 
 Na prática, o `FitnessAgent` recebe esse recurso pelo objeto de ambiente e já o utiliza para chamadas de IA. O binding de AI sempre acessa um recurso remoto; no modo local, o Wrangler informa que ele não é simulado localmente e pode gerar custos.
 
-Para desenvolvimento local, o comando `npm run dev:local` inicia o Worker sem exigir um subdomínio `workers.dev`. Como alternativa, `npx wrangler dev` pode usar o modo remoto, mas exige que um subdomínio `workers.dev` esteja registrado na conta Cloudflare.
+Para desenvolvimento local, o comando `npm run dev:local` inicia o Worker na porta `8787`, sem exigir um subdomínio `workers.dev`. Como alternativa, `npx wrangler dev` pode usar o modo remoto, mas exige que um subdomínio `workers.dev` esteja registrado na conta Cloudflare.
 
 ### Observabilidade
 
@@ -570,7 +570,9 @@ Até agora, foram concluídas estas etapas:
 25. O Worker passou a enviar respostas de texto ao número que originou a mensagem.
 26. Foi adicionado o comando `npm run dev:local` para iniciar o Worker em modo local.
 27. Foi testada a inicialização com `npx wrangler dev`; o modo remoto foi bloqueado pela ausência de um subdomínio `workers.dev`.
-28. Foi testado um POST com mensagem de treino e água, que retornou `200 EVENT_RECEIVED` usando JSON serializado corretamente.
+28. Foi testado um POST com mensagem de treino e água, que retornou `200` com uma resposta JSON usando JSON serializado corretamente.
+29. O fallback passou a preservar a duração informada pelo usuário, como os 45 minutos do exemplo.
+30. O POST passou a devolver a confirmação gerada pelo agente diretamente na resposta HTTP.
 23. Foi implementada a função `responderWhatsApp` para chamar a Meta Graph API v18.0.
 24. O Worker passou a enviar respostas de texto ao número que originou a mensagem.
 25. Foi testada a inicialização com `npx wrangler dev`; o modo remoto foi bloqueado pela ausência de um subdomínio `workers.dev`.
@@ -667,7 +669,7 @@ Para executar sem exigir um subdomínio `workers.dev`, use:
 npm run dev:local
 ```
 
-Nos testes atuais, o servidor local foi iniciado em `http://127.0.0.1:8788`. O binding de AI continua remoto e o Wrangler avisa que ele pode gerar custos.
+Nos testes atuais, o servidor local foi iniciado em `http://127.0.0.1:8787`. O binding de AI continua remoto e o Wrangler avisa que ele pode gerar custos.
 
 Publicar o Worker na Cloudflare, depois que a conta e as credenciais estiverem configuradas:
 
@@ -685,13 +687,128 @@ No estado atual, `npm test` ainda falha propositalmente porque nenhum teste foi 
 
 ### Testes manuais realizados
 
-O Worker foi iniciado com `npm run dev:local` e ficou disponível em `http://127.0.0.1:8788`.
+O Worker foi iniciado com `npm run dev:local` e ficou disponível em `http://127.0.0.1:8787`.
 
 - A validação GET do webhook retornou `403` quando o token local não foi configurado. Esse é o comportamento esperado para um token ausente ou incorreto.
 - Um primeiro POST retornou `500` porque o PowerShell enviou um JSON inválido, sem as aspas esperadas nas propriedades.
-- O mesmo POST foi repetido usando `ConvertTo-Json -Depth 10` e retornou `200 EVENT_RECEIVED`.
+- O mesmo POST foi repetido usando `ConvertTo-Json -Depth 10` e retornou `200` com a confirmação do agente em JSON.
 
 O teste confirma que o Worker consegue receber o evento e percorrer o handler. Para confirmar o envio pela Meta Graph API, ainda são necessárias credenciais válidas e variáveis `WHATSAPP_*` configuradas.
+
+### Como testar com Postman
+
+O Postman é um programa para enviar requisições HTTP manualmente. Ele funciona como um carteiro de testes: você escolhe o endereço, o método, os cabeçalhos e o conteúdo da mensagem, e observa a resposta do Worker.
+
+#### Passo 1: iniciar o Worker
+
+Abra um terminal na pasta do projeto e execute:
+
+```bash
+npm run dev:local
+```
+
+O terminal deverá informar que o servidor está disponível em:
+
+```text
+http://127.0.0.1:8787
+```
+
+Mantenha esse terminal aberto enquanto usar o Postman. Se o servidor for encerrado, o Postman não encontrará o endpoint.
+
+#### Passo 2: criar a requisição POST
+
+No Postman, crie uma nova requisição com estas configurações:
+
+- método: `POST`;
+- URL: `http://127.0.0.1:8787/webhook`;
+- aba **Headers**: adicione `Content-Type` com valor `application/json`;
+- aba **Body**: selecione `raw` e depois `JSON`.
+
+Cole este conteúdo no corpo:
+
+```json
+{
+  "entry": [
+    {
+      "changes": [
+        {
+          "value": {
+            "messages": [
+              {
+                "from": "5511999998888",
+                "type": "text",
+                "text": {
+                  "body": "Fiz 45 minutos de spinning hoje"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+Clique em **Send**. O Worker extrairá o remetente e o texto, enviará a mensagem ao `FitnessAgent` e tentará encaminhar a resposta à Meta Graph API.
+
+#### Passo 3: entender a resposta
+
+Quando o processamento terminar, o Postman deverá mostrar status `200` e um JSON parecido com este:
+
+```json
+{
+  "status": "ok",
+  "message": "Mensagem processada com sucesso",
+  "response": "💪 **Excelente Treino Registrado!**\n• **Modalidade:** SPINNING\n• **Duração:** 45 minutos\n• **Gasto Estimado:** ~473 kcal\n\nA disciplina supera a motivação. Parabéns pelo esforço de hoje! 🔥"
+}
+```
+
+O valor exato das calorias pode variar se o Workers AI interpretar a mensagem de outra forma. No fallback local, 45 minutos de spinning resultam em aproximadamente 473 kcal.
+
+#### Passo 4: testar água e passos
+
+Para testar hidratação, troque apenas o valor de `text.body`:
+
+```json
+"body": "Bebi 600 ml de água"
+```
+
+Para testar passos:
+
+```json
+"body": "Dei 8000 passos"
+```
+
+O agente usa uma meta diária de 2.000 ml para água e 7.000 passos para caminhada diária.
+
+#### Passo 5: testar a validação do webhook
+
+Crie uma segunda requisição no Postman:
+
+- método: `GET`;
+- URL: `http://127.0.0.1:8787/webhook?hub.mode=subscribe&hub.verify_token=teste&hub.challenge=abc123`.
+
+Sem configurar `WHATSAPP_VERIFY_TOKEN`, o resultado esperado é status `403` com a mensagem `Token de verificação inválido`. Para testar o cenário de sucesso, crie um arquivo `.dev.vars` na raiz do projeto:
+
+```env
+WHATSAPP_VERIFY_TOKEN=teste
+```
+
+Reinicie o Worker e envie a mesma requisição. O resultado esperado será status `200` e o corpo `abc123`.
+
+O arquivo `.dev.vars` é apenas para desenvolvimento local e não deve ser commitado. Nunca coloque tokens reais no corpo de uma requisição, em screenshots do Postman ou em arquivos versionados.
+
+#### Diagnóstico rápido
+
+| Resultado | Significado provável | Ação |
+| --- | --- | --- |
+| `ECONNREFUSED` | Worker desligado ou porta incorreta | Execute `npm run dev:local` e use a porta `8787` |
+| `403` no GET | Token ausente ou diferente | Confira o `.dev.vars` e reinicie o Worker |
+| `500` no POST | JSON inválido ou falha durante processamento | Confira o Body como `raw`/`JSON` e veja os logs do terminal |
+| `200` sem resposta de WhatsApp | Evento foi processado, mas a Meta não está configurada | Configure a conta Meta e os segredos reais |
+
+O Postman testa o Worker localmente. Ele não transforma o endpoint em um webhook público nem substitui a configuração da conta Meta Business.
 
 ### Desenvolvimento sem Meta Business
 
@@ -710,7 +827,7 @@ FitnessAgent + Workers AI
 EVENT_RECEIVED
 ```
 
-Esse teste confirma o recebimento do JSON e o processamento do evento. Ele não simula a entrega de uma mensagem pelo WhatsApp nem confirma o envio pela Meta Graph API.
+Esse teste confirma o recebimento do JSON, o processamento do evento e o formato da resposta HTTP. Ele não simula a entrega de uma mensagem pelo WhatsApp nem confirma o envio pela Meta Graph API.
 
 Para uma simulação completa sem credenciais, o próximo ajuste recomendado é criar um modo de desenvolvimento que apenas registre a resposta no console e não chame a Meta Graph API. Esse modo deve ficar desativado em produção.
 

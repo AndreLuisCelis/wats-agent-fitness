@@ -102,10 +102,12 @@ Retorne APENAS um objeto JSON com o seguinte formato:
       let tipo: TipoTreino = 'OTHER';
       if (t.includes('spinning')) tipo = 'SPINNING';
       if (t.includes('calistenia')) tipo = 'CALISTHENICS';
+      const duracaoInformada = t.match(/(\d+)\s*(?:min|minuto|minutos)/);
+      const duracaoMinutos = duracaoInformada ? Number(duracaoInformada[1]) : 40;
 
       return {
         intencaoIdentificada: 'REGISTRAR_TREINO',
-        dadosTreino: { tipo, duracaoMinutos: 40 },
+        dadosTreino: { tipo, duracaoMinutos },
         respostaTextual: 'Treino registrado via contingência!'
       };
     }

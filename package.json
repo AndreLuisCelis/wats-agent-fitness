@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "dev:local": "wrangler dev --local",
+    "dev:local": "wrangler dev --local --port 8787",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
