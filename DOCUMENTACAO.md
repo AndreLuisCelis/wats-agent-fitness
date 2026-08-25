@@ -14,6 +14,8 @@ Este arquivo funciona como um pequeno livro didático sobre o projeto. Ele expli
 
 A documentação descreve o estado real do projeto. A base foi configurada, o agente já possui lógica própria, o Worker recebe eventos do WhatsApp e já tenta enviar respostas pela Meta Graph API. Persistência e algumas validações de produção ainda estão pendentes.
 
+> **Situação atual:** o desenvolvimento do Worker pode continuar sem uma conta Meta Business. Porém, a integração real com o WhatsApp depende da criação de uma conta Meta Business, de um aplicativo na plataforma da Meta e da configuração do WhatsApp Business Platform.
+
 ## Como ler este guia
 
 Pense no projeto como uma casa que acabou de receber sua planta e suas ferramentas. O terreno está preparado, os cômodos foram separados, mas ainda falta construir as paredes e instalar os móveis.
@@ -77,6 +79,22 @@ Quando uma mensagem chega, o sistema precisará responder a algumas perguntas em
 5. Como devolver uma resposta clara e segura ao WhatsApp?
 
 Essa lista é o embrião do fluxo da aplicação. Ela também mostra por que o projeto foi separado em entrada, agente e tipos: cada parte terá uma responsabilidade compreensível.
+
+### O que é necessário para usar o WhatsApp em produção
+
+Para conectar este Worker ao serviço oficial, será necessário:
+
+1. criar ou acessar uma conta pessoal da Meta;
+2. criar um portfólio empresarial no Meta Business;
+3. criar um aplicativo no Meta for Developers;
+4. adicionar o produto WhatsApp ao aplicativo;
+5. configurar um número de telefone para a WhatsApp Business Platform;
+6. obter o ID do número, o token de acesso e o segredo da aplicação;
+7. configurar o webhook público apontando para o Worker.
+
+Não é obrigatório começar instalando o aplicativo móvel WhatsApp Business. A integração deste projeto usa a API oficial da Meta, que é uma configuração separada. Ainda assim, será necessário ter uma conta empresarial e um número habilitado para a plataforma.
+
+Enquanto esses pré-requisitos não existirem, não execute `wrangler secret put` com valores fictícios. O projeto pode ser desenvolvido e testado localmente sem enviar chamadas reais ao WhatsApp.
 
 ## Capítulo 2 — Estrutura atual
 
@@ -213,7 +231,7 @@ Descreve as configurações disponíveis no ambiente do Cloudflare Worker:
 - `WA_API_ACCESS_TOKEN`: token de acesso à API do WhatsApp;
 - `WA_PHONE_NUMBER_ID`: identificador do número usado pela API.
 
-Esses nomes documentam o contrato entre o código e a infraestrutura. Os valores reais não devem ser escritos no código nem commitados no Git; devem ser configurados como segredos ou variáveis de ambiente.
+Esses nomes documentam o contrato entre o código e a infraestrutura. Os valores reais não devem ser escritos no código nem commitados no Git; devem ser configurados como segredos ou variáveis de ambiente. Como a conta Meta ainda não foi criada, esses segredos podem permanecer sem configuração durante a fase local.
 
 ### Atenção: nomes ainda precisam ser alinhados
 
@@ -675,19 +693,40 @@ O Worker foi iniciado com `npm run dev:local` e ficou disponível em `http://127
 
 O teste confirma que o Worker consegue receber o evento e percorrer o handler. Para confirmar o envio pela Meta Graph API, ainda são necessárias credenciais válidas e variáveis `WHATSAPP_*` configuradas.
 
+### Desenvolvimento sem Meta Business
+
+Sem uma conta Meta, o fluxo que pode ser testado é:
+
+```text
+curl local
+  |
+  v
+Worker local
+  |
+  v
+FitnessAgent + Workers AI
+  |
+  v
+EVENT_RECEIVED
+```
+
+Esse teste confirma o recebimento do JSON e o processamento do evento. Ele não simula a entrega de uma mensagem pelo WhatsApp nem confirma o envio pela Meta Graph API.
+
+Para uma simulação completa sem credenciais, o próximo ajuste recomendado é criar um modo de desenvolvimento que apenas registre a resposta no console e não chame a Meta Graph API. Esse modo deve ficar desativado em produção.
+
 ## Capítulo 12 — Próxima etapa recomendada
 
-A próxima etapa mais importante é configurar as variáveis de ambiente e testar a chamada da Meta Graph API com credenciais válidas. A função `responderWhatsApp` já conecta a resposta do agente à API, e o Worker pode ser executado localmente com `npm run dev:local`.
+A próxima etapa depende do objetivo imediato. Para continuar estudando, use `npm run dev:local` e teste com `curl`. Para operar no WhatsApp real, primeiro crie a estrutura Meta Business e só então configure as variáveis de ambiente e teste a chamada da Meta Graph API com credenciais válidas. A função `responderWhatsApp` já conecta a resposta do agente à API.
 
 Uma sequência segura de desenvolvimento seria:
 
-1. configurar as variáveis `WHATSAPP_*` localmente;
-2. validar o webhook com o modo local;
-3. testar o envio pela Meta Graph API;
-4. criar os tipos das mensagens;
-5. tratar mensagens que não sejam texto;
-6. adicionar persistência e testes;
-7. configurar segredos e publicar.
+1. continuar os testes locais com `npm run dev:local`;
+2. criar a conta e o aplicativo Meta Business quando a integração real for necessária;
+3. configurar os segredos `WHATSAPP_*` com valores reais;
+4. validar o webhook público;
+5. testar o envio pela Meta Graph API;
+6. criar os tipos das mensagens e tratar mensagens que não sejam texto;
+7. adicionar persistência, testes e publicar.
 
 ## Capítulo 13 — Pequeno dicionário de tecnologia
 
