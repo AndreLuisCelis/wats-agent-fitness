@@ -715,6 +715,46 @@ npm run dev:local
 
 Nos testes atuais, o servidor local foi iniciado em `http://127.0.0.1:8787`. O binding de AI continua remoto e o Wrangler avisa que ele pode gerar custos.
 
+### Executar o frontend Angular
+
+Com o Worker rodando, abra outro terminal na raiz do projeto e instale as dependências do cliente:
+
+```bash
+npm run client:install
+```
+
+Inicie o frontend:
+
+```bash
+npm run client:start
+```
+
+A aplicação ficará disponível em `http://localhost:4200` e usará o endpoint local `http://127.0.0.1:8787/api/chat`. Para executar o cliente e o Worker ao mesmo tempo, mantenha cada comando em um terminal separado.
+
+Para gerar o build de produção:
+
+```bash
+npm run client:build
+```
+
+Os arquivos serão gerados em `client/dist/fitness-agent-client/browser`.
+
+### Verificar requisições e logs do Worker
+
+Para acompanhar as requisições do Worker publicado em tempo real:
+
+```bash
+npx wrangler tail whatsapp-fitness-agent
+```
+
+Depois envie uma mensagem pelo frontend ou pelo WhatsApp. O terminal exibirá requisições, logs do `console.log()`, erros e falhas na API do WhatsApp. Para filtrar apenas requisições com erro:
+
+```bash
+npx wrangler tail whatsapp-fitness-agent --status error
+```
+
+Interrompa o acompanhamento com `Ctrl+C`. Nos logs do agente, a mensagem `Resposta estruturada recebida do Workers AI` indica que a resposta da IA foi processada. Já `Erro ao executar Workers AI, usando fallback heurístico` indica que o fallback foi usado.
+
 Publicar o Worker na Cloudflare, depois que a conta e as credenciais estiverem configuradas:
 
 ```bash
@@ -744,7 +784,7 @@ As falhas de envio para a Meta Graph API agora são lançadas como erro. Com iss
 
 O cliente web não afirma mais que o servidor está “Online” sem realizar uma verificação. O cabeçalho usa o estado neutro `Pronto para conversar`, que não promete uma conexão que ainda não foi testada.
 
-Os manifests do projeto e do cliente declaram Node `22.22.3` ou superior, requisito do Angular CLI usado pelo frontend. No ambiente atual, o Node é `22.13.0`; por isso, `npm run client:build` continuará falhando até o Node ser atualizado.
+Os manifests do projeto e do cliente declaram Node `22.22.3` ou superior, requisito do Angular CLI usado pelo frontend. Confira a versão instalada com `node --version` antes de executar o build.
 
 O perfil `worker-startup.cpuprofile`, gerado pelo comando `wrangler check startup`, também passou a ser ignorado pelo Git por ser um artefato local de diagnóstico.
 
