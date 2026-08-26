@@ -33,6 +33,32 @@ export class FitnessRepository {
     return registro;
   }
 
+  public async buscarTreinos(userId: string, limite: number = 10): Promise<RegistroTreino[]> {
+    if (!this.db) return [];
+
+    const resultado = await this.db.prepare(`
+      SELECT id, user_id AS userId, tipo, duracao_minutos AS duracaoMinutos, calorias, data
+      FROM registros_treino
+      WHERE user_id = ?
+      ORDER BY data DESC
+      LIMIT ?
+    `).bind(userId, limite).all<RegistroTreino>();
+
+    return resultado.results;
+  }
+
+  public async buscarAguaHoje(userId: string): Promise<number> {
+    if (!this.db) return 0;
+
+    const resultado = await this.db.prepare(`
+      SELECT COALESCE(agua_ml, 0) AS aguaMl
+      FROM metricas_diarias
+      WHERE user_id = ? AND data = date('now')
+    `).bind(userId).first<{ aguaMl: number }>();
+
+    return resultado?.aguaMl ?? 0;
+  }
+
   public async salvarPassos(userId: string, dados: DadosPassos): Promise<void> {
     if (!this.db) return;
 

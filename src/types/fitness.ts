@@ -14,7 +14,7 @@ export interface DadosAgua {
 }
 
 export interface AnaliseIntencaoIA {
-  intencaoIdentificada: 'REGISTRAR_TREINO' | 'REGISTRAR_PASSOS' | 'REGISTRAR_AGUA' | 'CONVERSA_GERAL';
+  intencaoIdentificada: 'REGISTRAR_TREINO' | 'REGISTRAR_PASSOS' | 'REGISTRAR_AGUA' | 'CONSULTAR_REGISTROS' | 'CONVERSA_GERAL';
   dadosTreino?: DadosTreino;
   dadosPassos?: DadosPassos;
   dadosAgua?: DadosAgua;
@@ -34,6 +34,7 @@ export interface RegistroTreino {
 export interface Env {
   AI: any;
   DB?: D1Database;
+  FRONTEND_ORIGIN?: string;
   WHATSAPP_VERIFY_TOKEN: string;
   WHATSAPP_PHONE_NUMBER_ID: string;
   WHATSAPP_API_TOKEN: string;
