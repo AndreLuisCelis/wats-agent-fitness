@@ -27,7 +27,9 @@ pnpm-debug.log*
 
 # Cache de ferramentas
 .cache/
+.angular/
 .eslintcache
+*.cpuprofile
 
 # Arquivos do sistema operacional
 .DS_Store

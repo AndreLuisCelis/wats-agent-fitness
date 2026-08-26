@@ -1,11 +1,18 @@
 {
   "name": "whatsapp-fitness-agent",
   "version": "1.0.0",
+  "engines": {
+    "node": ">=22.22.3"
+  },
   "main": "index.js",
   "scripts": {
     "db:migrate:local": "wrangler d1 migrations apply whatsapp-fitness-agent-db --local",
     "db:migrate:remote": "wrangler d1 migrations apply whatsapp-fitness-agent-db --remote",
+    "dev": "npm run dev:local",
     "dev:local": "wrangler dev --local --port 8787",
+    "client:install": "npm install --prefix client",
+    "client:start": "npm start --prefix client",
+    "client:build": "npm run build --prefix client",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
