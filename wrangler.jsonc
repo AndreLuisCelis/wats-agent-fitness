@@ -1,12 +1,19 @@
 {
- "$schema": "node_modules/wrangler/config-schema.json",
- "name": "whatsapp-fitness-agent",
- "main": "src/index.ts",
- "compatibility_date": "2026-08-25",
- "ai": {
- "binding": "AI"
- },
- "observability": {
- "enabled": true
- }
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "whatsapp-fitness-agent",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-08-25",
+	"ai": {
+		"binding": "AI"
+	},
+	"observability": {
+		"enabled": true
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "whatsapp-fitness-agent-db",
+			"database_id": "5dd5e2ad-99a1-4933-9e25-f0e14619cc5f"
+		}
+	]
 }

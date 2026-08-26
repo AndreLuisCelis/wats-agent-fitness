@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
+    "db:migrate:local": "wrangler d1 migrations apply whatsapp-fitness-agent-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply whatsapp-fitness-agent-db --remote",
     "dev:local": "wrangler dev --local --port 8787",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

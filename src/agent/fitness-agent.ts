@@ -1,12 +1,15 @@
 import { AnaliseIntencaoIA, Env, TipoTreino } from '../types/fitness.js';
+import { FitnessRepository } from '../repositories/fitness-repository.js';
 
 export class FitnessAgent {
   private env: Env;
   private agentName: string;
+  private repository: FitnessRepository;
 
   constructor(env: Env, agentName: string = 'FitBot Pro') {
     this.env = env;
     this.agentName = agentName;
+    this.repository = new FitnessRepository(env.DB);
   }
 
   public async processarMensagem(userId: string, mensagemTexto: string): Promise<string> {
@@ -130,6 +133,11 @@ Retorne APENAS um objeto JSON com o seguinte formato:
 
     const calorias = Math.round(duracao * (fatoresKcal[tipo] || 5.0));
 
+    await this.repository.salvarTreino(userId, {
+      tipo,
+      duracaoMinutos: duracao
+    }, calorias);
+
     return `💪 **Excelente Treino Registrado!**\n` +
       `• **Modalidade:** ${tipo}\n` +
       `• **Duração:** ${duracao} minutos\n` +
@@ -139,6 +147,7 @@ Retorne APENAS um objeto JSON com o seguinte formato:
 
   private async executarRegistroPassos(userId: string, quantidade: number): Promise<string> {
     const meta = 7000;
+    await this.repository.salvarPassos(userId, { quantidade });
     const pct = Math.min(Math.round((quantidade / meta) * 100), 100);
     const barra = '▓'.repeat(Math.floor(pct / 10)) + '░'.repeat(10 - Math.floor(pct / 10));
 
@@ -151,6 +160,7 @@ Retorne APENAS um objeto JSON com o seguinte formato:
 
   private async executarRegistroAgua(userId: string, quantidadeMl: number): Promise<string> {
     const metaMl = 2000;
+    await this.repository.salvarAgua(userId, { quantidadeMl });
     const percentual = Math.min(Math.round((quantidadeMl / metaMl) * 100), 100);
 
     return `💧 **Água Registrada!**\n` +

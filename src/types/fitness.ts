@@ -33,6 +33,7 @@ export interface RegistroTreino {
 
 export interface Env {
   AI: any;
+  DB?: D1Database;
   WHATSAPP_VERIFY_TOKEN: string;
   WHATSAPP_PHONE_NUMBER_ID: string;
   WHATSAPP_API_TOKEN: string;

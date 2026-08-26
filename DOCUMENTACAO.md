@@ -12,7 +12,7 @@ Este arquivo funciona como um pequeno livro didático sobre o projeto. Ele expli
 - o que já está funcionando;
 - o que ainda precisa ser desenvolvido.
 
-A documentação descreve o estado real do projeto. A base foi configurada, o agente já possui lógica própria, o Worker recebe eventos do WhatsApp e já tenta enviar respostas pela Meta Graph API. Persistência e algumas validações de produção ainda estão pendentes.
+A documentação descreve o estado real do projeto. A base foi configurada, o agente já possui lógica própria, o Worker recebe eventos do WhatsApp, tenta enviar respostas pela Meta Graph API e persiste os dados no Cloudflare D1. Algumas validações de produção ainda estão pendentes.
 
 > **Situação atual:** o desenvolvimento do Worker pode continuar sem uma conta Meta Business. Porém, a integração real com o WhatsApp depende da criação de uma conta Meta Business, de um aplicativo na plataforma da Meta e da configuração do WhatsApp Business Platform.
 
@@ -105,10 +105,14 @@ whatsapp-fitness-agent/
 ├── tsconfig.json
 ├── wrangler.jsonc
 ├── DOCUMENTACAO.md
+├── migrations/
+│   └── 0001_create_fitness_tables.sql
 └── src/
     ├── index.ts
     ├── agent/
     │   └── fitness-agent.ts
+  ├── repositories/
+  │   └── fitness-repository.ts
     └── types/
         └── fitness.ts
 ```
@@ -147,7 +151,30 @@ Responsabilidades implementadas:
 - responder conversas gerais;
 - usar uma regra de contingência quando a IA não estiver disponível.
 
-Ainda faltam validações, persistência e tratamento de todos os tipos de eventos do WhatsApp.
+Ainda faltam validações e tratamento de todos os tipos de eventos do WhatsApp.
+
+### `src/repositories/fitness-repository.ts`
+
+Este arquivo faz a ponte entre a regra de negócio e o banco D1. O agente não precisa conhecer detalhes de SQL: ele apenas pede ao `FitnessRepository` para salvar um treino, passos ou água.
+
+O repositório funciona com três operações:
+
+- `salvarTreino`: grava usuário, modalidade, duração, calorias e data;
+- `salvarPassos`: soma os passos ao registro do usuário no dia atual;
+- `salvarAgua`: soma a água, em mililitros, ao registro do usuário no dia atual.
+
+O banco é opcional no código (`DB?`). Assim, os testes locais continuam conseguindo executar a conversa mesmo antes de um binding D1 ser configurado. Quando o binding existe, os dados são persistidos.
+
+### `migrations/0001_create_fitness_tables.sql`
+
+Uma migração é uma receita versionada para criar ou alterar o banco. Esta primeira migração cria:
+
+- `registros_treino`, para cada treino individual;
+- `metricas_diarias`, para consolidar passos e água por usuário e data.
+
+Também foram adicionados índices e restrições SQL. Por exemplo, duração e calorias não podem assumir valores inválidos, e a combinação de usuário com data identifica uma única métrica diária.
+
+O banco D1 `whatsapp-fitness-agent-db` foi criado na Cloudflare e a migração `0001_create_fitness_tables.sql` foi aplicada nos ambientes local e remoto.
 
 ### `src/types/`
 
@@ -529,6 +556,19 @@ Na prática, o `FitnessAgent` recebe esse recurso pelo objeto de ambiente e já 
 
 Para desenvolvimento local, o comando `npm run dev:local` inicia o Worker na porta `8787`, sem exigir um subdomínio `workers.dev`. Como alternativa, `npx wrangler dev` pode usar o modo remoto, mas exige que um subdomínio `workers.dev` esteja registrado na conta Cloudflare.
 
+### Binding do banco D1
+
+O `wrangler.jsonc` agora possui um binding `DB` apontando para o banco `whatsapp-fitness-agent-db`. O binding permite que o Worker use `env.DB` para executar comandos SQL sem chamar uma API externa.
+
+Para repetir as migrações, use:
+
+```bash
+npm run db:migrate:local
+npm run db:migrate:remote
+```
+
+O primeiro comando atualiza o banco local. O segundo atualiza o banco remoto da Cloudflare. Migrações devem ser aplicadas na ordem e não devem ser editadas depois de aplicadas em produção; para mudanças futuras, crie um novo arquivo numerado.
+
 ### Observabilidade
 
 ```json
@@ -573,6 +613,11 @@ Até agora, foram concluídas estas etapas:
 28. Foi testado um POST com mensagem de treino e água, que retornou `200` com uma resposta JSON usando JSON serializado corretamente.
 29. O fallback passou a preservar a duração informada pelo usuário, como os 45 minutos do exemplo.
 30. O POST passou a devolver a confirmação gerada pelo agente diretamente na resposta HTTP.
+31. Foi criado o banco D1 `whatsapp-fitness-agent-db`.
+32. Foram criadas as tabelas de registros de treino e métricas diárias.
+33. O `FitnessRepository` foi conectado ao agente para persistir treinos, passos e água.
+34. A migração foi aplicada nos ambientes local e remoto.
+35. Foram adicionados comandos npm para repetir as migrações.
 23. Foi implementada a função `responderWhatsApp` para chamar a Meta Graph API v18.0.
 24. O Worker passou a enviar respostas de texto ao número que originou a mensagem.
 25. Foi testada a inicialização com `npx wrangler dev`; o modo remoto foi bloqueado pela ausência de um subdomínio `workers.dev`.
@@ -591,7 +636,6 @@ Os seguintes itens ainda estão pendentes:
 - tratamento de `CONSULTAR_PROGRESSO`;
 - validação de durações, passos e valores negativos;
 - substituição de `AI: any` por um tipo mais específico;
-- persistência dos treinos, passos e água em banco de dados;
 - configuração de variáveis de ambiente e segredos;
 - armazenamento do histórico das conversas;
 - tratamento de erros;
@@ -692,6 +736,7 @@ O Worker foi iniciado com `npm run dev:local` e ficou disponível em `http://127
 - A validação GET do webhook retornou `403` quando o token local não foi configurado. Esse é o comportamento esperado para um token ausente ou incorreto.
 - Um primeiro POST retornou `500` porque o PowerShell enviou um JSON inválido, sem as aspas esperadas nas propriedades.
 - O mesmo POST foi repetido usando `ConvertTo-Json -Depth 10` e retornou `200` com a confirmação do agente em JSON.
+- O último treino foi consultado no D1 local e apareceu como `SPINNING`, 45 minutos e 473 kcal para o usuário `5511999998888`.
 
 O teste confirma que o Worker consegue receber o evento e percorrer o handler. Para confirmar o envio pela Meta Graph API, ainda são necessárias credenciais válidas e variáveis `WHATSAPP_*` configuradas.
 
@@ -843,7 +888,7 @@ Uma sequência segura de desenvolvimento seria:
 4. validar o webhook público;
 5. testar o envio pela Meta Graph API;
 6. criar os tipos das mensagens e tratar mensagens que não sejam texto;
-7. adicionar persistência, testes e publicar.
+7. adicionar testes e publicar.
 
 ## Capítulo 13 — Pequeno dicionário de tecnologia
 
