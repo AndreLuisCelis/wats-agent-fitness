@@ -46,6 +46,9 @@ export class FitnessAgent {
         }
         break;
 
+      case 'CONSULTAR_REGISTROS':
+        return await this.consultarRegistros(userId);
+
       case 'CONVERSA_GERAL':
       default:
         return analise.respostaTextual;
@@ -60,7 +63,7 @@ Você é o ${this.agentName}, um assistente virtual de fitness carismático, dir
 Sua tarefa é analisar a mensagem do usuário e extrair os dados em formato JSON válido.
 Retorne APENAS um objeto JSON com o seguinte formato:
 {
-  "intencaoIdentificada": "REGISTRAR_TREINO" | "REGISTRAR_PASSOS" | "REGISTRAR_AGUA" | "CONVERSA_GERAL",
+  "intencaoIdentificada": "REGISTRAR_TREINO" | "REGISTRAR_PASSOS" | "REGISTRAR_AGUA" | "CONSULTAR_REGISTROS" | "CONVERSA_GERAL",
   "dadosTreino": { "tipo": "SPINNING" | "CALISTHENICS" | "WEIGHTLIFTING" | "WALKING" | "RUNNING" | "OTHER", "duracaoMinutos": number },
   "dadosPassos": { "quantidade": number },
   "dadosAgua": { "quantidadeMl": number },
@@ -73,23 +76,57 @@ Retorne APENAS um objeto JSON com o seguinte formato:
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: texto }
-        ]
+        ],
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
+            type: 'object',
+            properties: {
+              intencaoIdentificada: {
+                type: 'string',
+                enum: ['REGISTRAR_TREINO', 'REGISTRAR_PASSOS', 'REGISTRAR_AGUA', 'CONSULTAR_REGISTROS', 'CONVERSA_GERAL']
+              },
+              dadosTreino: {
+                type: 'object',
+                properties: {
+                  tipo: { type: 'string', enum: ['SPINNING', 'CALISTHENICS', 'WEIGHTLIFTING', 'WALKING', 'RUNNING', 'OTHER'] },
+                  duracaoMinutos: { type: 'number' }
+                }
+              },
+              dadosPassos: {
+                type: 'object',
+                properties: { quantidade: { type: 'number' } }
+              },
+              dadosAgua: {
+                type: 'object',
+                properties: { quantidadeMl: { type: 'number' } }
+              },
+              respostaTextual: { type: 'string' }
+            },
+            required: ['intencaoIdentificada', 'respostaTextual']
+          }
+        }
       });
 
-      const rawText = aiResponse.response || '';
+      const resposta = aiResponse?.response;
+      const rawText = typeof resposta === 'string' ? resposta : '';
       let pensamento = '';
-      let jsonClean = rawText;
+      let jsonClean: unknown = resposta;
 
-      if (rawText.includes('</think>')) {
+      if (rawText && rawText.includes('</think>')) {
         const parts = rawText.split('</think>');
         pensamento = parts[0].replace('<think>', '').trim();
         jsonClean = parts[1] ? parts[1].trim() : parts[0].trim();
       }
 
-      jsonClean = jsonClean.replace(/```json/g, '').replace(/```/g, '').trim();
+      if (typeof jsonClean === 'string') {
+        jsonClean = jsonClean.replace(/```json/g, '').replace(/```/g, '').trim();
+        jsonClean = JSON.parse(jsonClean as string);
+      }
 
-      const parsed: AnaliseIntencaoIA = JSON.parse(jsonClean);
+      const parsed = this.validarAnalise(jsonClean);
       parsed.pensamentoIa = pensamento;
+      console.log(`[${this.agentName}] Resposta estruturada recebida do Workers AI.`);
 
       return parsed;
     } catch (error) {
@@ -98,8 +135,61 @@ Retorne APENAS um objeto JSON com o seguinte formato:
     }
   }
 
+  private validarAnalise(valor: unknown): AnaliseIntencaoIA {
+    if (!valor || typeof valor !== 'object') {
+      throw new Error('Workers AI não retornou um objeto estruturado.');
+    }
+
+    const analise = valor as Partial<AnaliseIntencaoIA>;
+    const intencoes = ['REGISTRAR_TREINO', 'REGISTRAR_PASSOS', 'REGISTRAR_AGUA', 'CONSULTAR_REGISTROS', 'CONVERSA_GERAL'];
+    if (!intencoes.includes(analise.intencaoIdentificada ?? '') || typeof analise.respostaTextual !== 'string') {
+      throw new Error('Resposta do Workers AI fora do contrato esperado.');
+    }
+
+    return analise as AnaliseIntencaoIA;
+  }
+
   private fallbackHeuristico(texto: string): AnaliseIntencaoIA {
     const t = texto.toLowerCase();
+
+    if (t.includes('registro') || t.includes('histórico') || t.includes('historico') || t.includes('treinos')) {
+      return {
+        intencaoIdentificada: 'CONSULTAR_REGISTROS',
+        respostaTextual: 'Vou consultar seus registros.'
+      };
+    }
+
+    if (t.includes('passo') || t.includes('caminhei') || t.includes('caminhada')) {
+      const quantidadeInformada = t.match(/([\d.,]+)\s*(?:mil\s*)?passos?/);
+      const valorTexto = quantidadeInformada?.[1]?.replace(/\./g, '').replace(',', '.');
+      const quantidadeBase = valorTexto ? Number(valorTexto) : 0;
+      const quantidade = t.includes('mil') ? quantidadeBase * 1000 : quantidadeBase;
+
+      if (quantidade > 0) {
+        return {
+          intencaoIdentificada: 'REGISTRAR_PASSOS',
+          dadosPassos: { quantidade: Math.round(quantidade) },
+          respostaTextual: 'Passos registrados!'
+        };
+      }
+    }
+
+    if (t.includes('água') || t.includes('agua') || t.includes('hidrata') || /[\d.,]+\s*(?:ml|mililitros?|l|litros?)/.test(t)) {
+      const quantidadeInformada = t.match(/([\d.,]+)\s*(?:ml|mililitros?|l|litros?)/);
+      const valorTexto = quantidadeInformada?.[1]?.replace(',', '.');
+      const valor = valorTexto ? Number(valorTexto) : 0;
+      const quantidadeMl = quantidadeInformada?.[0].includes('l') && !quantidadeInformada[0].includes('ml')
+        ? valor * 1000
+        : valor;
+
+      if (quantidadeMl > 0) {
+        return {
+          intencaoIdentificada: 'REGISTRAR_AGUA',
+          dadosAgua: { quantidadeMl: Math.round(quantidadeMl) },
+          respostaTextual: 'Hidratação registrada!'
+        };
+      }
+    }
 
     if (t.includes('spinning') || t.includes('treino') || t.includes('calistenia')) {
       let tipo: TipoTreino = 'OTHER';
@@ -119,6 +209,46 @@ Retorne APENAS um objeto JSON com o seguinte formato:
       intencaoIdentificada: 'CONVERSA_GERAL',
       respostaTextual: 'Olá! Sou seu assistente de fitness. Como foi seu treino hoje?'
     };
+  }
+
+  private async consultarRegistros(userId: string): Promise<string> {
+    const [registros, aguaHoje] = await Promise.all([
+      this.repository.buscarTreinos(userId),
+      this.repository.buscarAguaHoje(userId)
+    ]);
+
+    if (registros.length === 0 && aguaHoje === 0) {
+      return 'Ainda não encontrei treinos registrados para este usuário. Registre uma atividade e tente consultar novamente.';
+    }
+
+    const secoes: string[] = [];
+
+    if (registros.length > 0) {
+      const linhas = registros.map((registro, indice) => {
+        const data = new Date(registro.data).toLocaleString('pt-BR', {
+          dateStyle: 'short',
+          timeStyle: 'short'
+        });
+        return `${indice + 1}. ${registro.tipo} - ${registro.duracaoMinutos} min - ~${registro.calorias} kcal (${data})`;
+      });
+      const totalCalorias = registros.reduce((total, registro) => total + registro.calorias, 0);
+
+      secoes.push(
+        `Seus ${registros.length} registros de treino mais recentes:\n` +
+        `${linhas.join('\n')}\n\n` +
+        `Total estimado nesse período: ~${totalCalorias} kcal.`
+      );
+    }
+
+    if (aguaHoje > 0) {
+      const metaMl = 2000;
+      const percentual = Math.min(Math.round((aguaHoje / metaMl) * 100), 100);
+      secoes.push(
+        `💧 Água consumida hoje: ${aguaHoje.toLocaleString('pt-BR')} ml de ${metaMl.toLocaleString('pt-BR')} ml (${percentual}%).`
+      );
+    }
+
+    return secoes.join('\n\n');
   }
 
   private async executarRegistroTreino(userId: string, tipo: TipoTreino, duracao: number): Promise<string> {

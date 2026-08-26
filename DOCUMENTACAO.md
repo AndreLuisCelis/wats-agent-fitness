@@ -738,6 +738,16 @@ O Worker foi iniciado com `npm run dev:local` e ficou disponível em `http://127
 - O mesmo POST foi repetido usando `ConvertTo-Json -Depth 10` e retornou `200` com a confirmação do agente em JSON.
 - O último treino foi consultado no D1 local e apareceu como `SPINNING`, 45 minutos e 473 kcal para o usuário `5511999998888`.
 
+### Ajustes de confiabilidade
+
+As falhas de envio para a Meta Graph API agora são lançadas como erro. Com isso, o webhook responde `500` quando a mensagem não consegue ser enviada, em vez de confirmar silenciosamente uma operação incompleta.
+
+O cliente web não afirma mais que o servidor está “Online” sem realizar uma verificação. O cabeçalho usa o estado neutro `Pronto para conversar`, que não promete uma conexão que ainda não foi testada.
+
+Os manifests do projeto e do cliente declaram Node `22.22.3` ou superior, requisito do Angular CLI usado pelo frontend. No ambiente atual, o Node é `22.13.0`; por isso, `npm run client:build` continuará falhando até o Node ser atualizado.
+
+O perfil `worker-startup.cpuprofile`, gerado pelo comando `wrangler check startup`, também passou a ser ignorado pelo Git por ser um artefato local de diagnóstico.
+
 O teste confirma que o Worker consegue receber o evento e percorrer o handler. Para confirmar o envio pela Meta Graph API, ainda são necessárias credenciais válidas e variáveis `WHATSAPP_*` configuradas.
 
 ### Como testar com Postman
