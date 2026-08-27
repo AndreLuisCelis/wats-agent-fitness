@@ -15,6 +15,14 @@ export class FitnessAgent {
   public async processarMensagem(userId: string, mensagemTexto: string): Promise<string> {
     console.log(`[${this.agentName}] Recebida mensagem do usuário ${userId}: "${mensagemTexto}"`);
 
+    const consultaLocal = this.identificarConsultaLocal(mensagemTexto);
+    if (consultaLocal) {
+      console.log(`[${this.agentName}] Consulta respondida por regras locais: ${consultaLocal}.`);
+      if (consultaLocal === 'AGUA') return await this.consultarAguaHoje(userId);
+      if (consultaLocal === 'PASSOS') return await this.consultarPassosHoje(userId);
+      return await this.consultarRegistros(userId, consultaLocal === 'HOJE');
+    }
+
     const analise = await this.interpretarComWorkersAI(mensagemTexto);
 
     switch (analise.intencaoIdentificada) {
@@ -66,6 +74,36 @@ export class FitnessAgent {
     }
 
     return "Não consegui entender completamente seus dados de treino. Pode informar algo como: 'Fiz 45 min de spinning' ou 'Dei 8000 passos'?";
+  }
+
+  private identificarConsultaLocal(texto: string): 'HOJE' | 'AGUA' | 'PASSOS' | 'TREINOS' | null {
+    const consulta = texto.toLowerCase()
+      .replace(/[áàâãä]/g, 'a')
+      .replace(/[éèêë]/g, 'e')
+      .replace(/[íìîï]/g, 'i')
+      .replace(/[óòôõö]/g, 'o')
+      .replace(/[úùûü]/g, 'u')
+      .replace(/ç/g, 'c');
+
+    if (consulta.includes('agua') && /(quanto|quanta|quantos|qual|como esta|como ficou)/.test(consulta)) {
+      return 'AGUA';
+    }
+
+    if (consulta.includes('passo') && /(quantos|quantidade|dei|fiz|hoje)/.test(consulta)) {
+      return 'PASSOS';
+    }
+
+    if (consulta.includes('o que registrei hoje') || consulta.includes('meus registros de hoje')
+      || consulta.includes('historico de hoje') || consulta.includes('historico do dia')) {
+      return 'HOJE';
+    }
+
+    if (consulta.includes('meus treinos') || consulta.includes('meu treino')
+      || consulta.includes('meus registros') || consulta.includes('meu historico')) {
+      return 'TREINOS';
+    }
+
+    return null;
   }
 
   private async interpretarComWorkersAI(texto: string): Promise<AnaliseIntencaoIA> {
@@ -255,11 +293,11 @@ Retorne APENAS um objeto JSON com o seguinte formato:
     };
   }
 
-  private async consultarRegistros(userId: string): Promise<string> {
+  private async consultarRegistros(userId: string, apenasHoje: boolean = false): Promise<string> {
     const [registros, aguaHoje, alimentos] = await Promise.all([
-      this.repository.buscarTreinos(userId),
+      this.repository.buscarTreinos(userId, 10, apenasHoje),
       this.repository.buscarAguaHoje(userId),
-      this.repository.buscarAlimentos(userId)
+      this.repository.buscarAlimentos(userId, 10, apenasHoje)
     ]);
 
     if (registros.length === 0 && aguaHoje === 0 && alimentos.length === 0) {
@@ -312,6 +350,26 @@ Retorne APENAS um objeto JSON com o seguinte formato:
     }
 
     return secoes.join('\n\n');
+  }
+
+  private async consultarAguaHoje(userId: string): Promise<string> {
+    const aguaHoje = await this.repository.buscarAguaHoje(userId);
+    const metaMl = 2000;
+    const percentual = Math.min(Math.round((aguaHoje / metaMl) * 100), 100);
+
+    return aguaHoje > 0
+      ? `Você já bebeu ${aguaHoje.toLocaleString('pt-BR')} ml de água hoje (${percentual}% da meta de ${metaMl.toLocaleString('pt-BR')} ml).`
+      : 'Você ainda não registrou consumo de água hoje.';
+  }
+
+  private async consultarPassosHoje(userId: string): Promise<string> {
+    const passosHoje = await this.repository.buscarPassosHoje(userId);
+    const meta = 7000;
+    const percentual = Math.min(Math.round((passosHoje / meta) * 100), 100);
+
+    return passosHoje > 0
+      ? `Você deu ${passosHoje.toLocaleString('pt-BR')} passos hoje (${percentual}% da meta de ${meta.toLocaleString('pt-BR')}).`
+      : 'Você ainda não registrou passos hoje.';
   }
 
   private async executarRegistroTreino(userId: string, tipo: TipoTreino, duracao: number): Promise<string> {

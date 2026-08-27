@@ -33,13 +33,14 @@ export class FitnessRepository {
     return registro;
   }
 
-  public async buscarTreinos(userId: string, limite: number = 10): Promise<RegistroTreino[]> {
+  public async buscarTreinos(userId: string, limite: number = 10, apenasHoje: boolean = false): Promise<RegistroTreino[]> {
     if (!this.db) return [];
 
     const resultado = await this.db.prepare(`
       SELECT id, user_id AS userId, tipo, duracao_minutos AS duracaoMinutos, calorias, data
       FROM registros_treino
       WHERE user_id = ?
+      ${apenasHoje ? "AND date(data) = date('now')" : ''}
       ORDER BY data DESC
       LIMIT ?
     `).bind(userId, limite).all<RegistroTreino>();
@@ -57,6 +58,18 @@ export class FitnessRepository {
     `).bind(userId).first<{ aguaMl: number }>();
 
     return resultado?.aguaMl ?? 0;
+  }
+
+  public async buscarPassosHoje(userId: string): Promise<number> {
+    if (!this.db) return 0;
+
+    const resultado = await this.db.prepare(`
+      SELECT COALESCE(passos, 0) AS passos
+      FROM metricas_diarias
+      WHERE user_id = ? AND data = date('now')
+    `).bind(userId).first<{ passos: number }>();
+
+    return resultado?.passos ?? 0;
   }
 
   public async salvarPassos(userId: string, dados: DadosPassos): Promise<void> {
@@ -111,13 +124,14 @@ export class FitnessRepository {
     return registro;
   }
 
-  public async buscarAlimentos(userId: string, limite: number = 10): Promise<RegistroAlimento[]> {
+  public async buscarAlimentos(userId: string, limite: number = 10, apenasHoje: boolean = false): Promise<RegistroAlimento[]> {
     if (!this.db) return [];
 
     const resultado = await this.db.prepare(`
       SELECT id, user_id AS userId, alimento, quantidade, unidade, calorias, data
       FROM registros_alimentacao
       WHERE user_id = ?
+      ${apenasHoje ? "AND date(data) = date('now')" : ''}
       ORDER BY data DESC
       LIMIT ?
     `).bind(userId, limite).all<RegistroAlimento>();

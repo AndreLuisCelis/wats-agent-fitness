@@ -784,11 +784,22 @@ As falhas de envio para a Meta Graph API agora são lançadas como erro. Com iss
 
 O cliente web não afirma mais que o servidor está “Online” sem realizar uma verificação. O cabeçalho usa o estado neutro `Pronto para conversar`, que não promete uma conexão que ainda não foi testada.
 
+Consultas frequentes agora são respondidas por regras locais antes da chamada ao Workers AI. Isso reduz o consumo da cota de neurônios e consulta diretamente o D1 para mensagens como:
+
+- `o que registrei hoje`;
+- `quanto de água bebi`;
+- `meus treinos`;
+- `quantos passos dei`.
+
+As consultas de água e passos retornam os totais do dia. A consulta do histórico de hoje filtra treinos e alimentos pela data atual. Quando nenhuma regra local é identificada, o fluxo continua usando o Workers AI normalmente.
+
 Os manifests do projeto e do cliente declaram Node `22.22.3` ou superior, requisito do Angular CLI usado pelo frontend. Confira a versão instalada com `node --version` antes de executar o build.
 
 O perfil `worker-startup.cpuprofile`, gerado pelo comando `wrangler check startup`, também passou a ser ignorado pelo Git por ser um artefato local de diagnóstico.
 
 O teste confirma que o Worker consegue receber o evento e percorrer o handler. Para confirmar o envio pela Meta Graph API, ainda são necessárias credenciais válidas e variáveis `WHATSAPP_*` configuradas.
+
+O Worker está publicado em `https://whatsapp-fitness-agent.andreluiscelis.workers.dev`. A versão que inclui as consultas locais é `ca01d069-b7ec-49d0-9621-ffd3c5183475`.
 
 ### Como testar com Postman
 
