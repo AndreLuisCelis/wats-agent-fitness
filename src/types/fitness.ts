@@ -13,11 +13,18 @@ export interface DadosAgua {
   quantidadeMl: number;
 }
 
+export interface DadosAlimento {
+  alimento: string;
+  quantidade: number;
+  unidade?: string;
+}
+
 export interface AnaliseIntencaoIA {
-  intencaoIdentificada: 'REGISTRAR_TREINO' | 'REGISTRAR_PASSOS' | 'REGISTRAR_AGUA' | 'CONSULTAR_REGISTROS' | 'CONVERSA_GERAL';
+  intencaoIdentificada: 'REGISTRAR_TREINO' | 'REGISTRAR_PASSOS' | 'REGISTRAR_AGUA' | 'REGISTRAR_ALIMENTO' | 'CONSULTAR_REGISTROS' | 'CONVERSA_GERAL';
   dadosTreino?: DadosTreino;
   dadosPassos?: DadosPassos;
   dadosAgua?: DadosAgua;
+  dadosAlimento?: DadosAlimento;
   respostaTextual: string;
   pensamentoIa?: string;
 }
@@ -27,6 +34,16 @@ export interface RegistroTreino {
   userId: string;
   tipo: TipoTreino;
   duracaoMinutos: number;
+  calorias: number;
+  data: string;
+}
+
+export interface RegistroAlimento {
+  id?: string;
+  userId: string;
+  alimento: string;
+  quantidade: number;
+  unidade?: string;
   calorias: number;
   data: string;
 }

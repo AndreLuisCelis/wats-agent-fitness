@@ -1,4 +1,4 @@
-import { DadosAgua, DadosPassos, DadosTreino, RegistroTreino } from '../types/fitness.js';
+import { DadosAgua, DadosAlimento, DadosPassos, DadosTreino, RegistroAlimento, RegistroTreino } from '../types/fitness.js';
 
 export class FitnessRepository {
   constructor(private readonly db?: D1Database) {}
@@ -77,5 +77,51 @@ export class FitnessRepository {
       VALUES (?, date('now'), ?)
       ON CONFLICT(user_id, data) DO UPDATE SET agua_ml = metricas_diarias.agua_ml + excluded.agua_ml
     `).bind(userId, dados.quantidadeMl).run();
+  }
+
+  public async salvarAlimento(
+    userId: string,
+    dados: DadosAlimento,
+    calorias: number
+  ): Promise<RegistroAlimento | null> {
+    if (!this.db) return null;
+
+    const registro: RegistroAlimento = {
+      userId,
+      alimento: dados.alimento,
+      quantidade: dados.quantidade,
+      unidade: dados.unidade,
+      calorias,
+      data: new Date().toISOString()
+    };
+
+    await this.db.prepare(`
+      INSERT INTO registros_alimentacao
+        (user_id, alimento, quantidade, unidade, calorias, data)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).bind(
+      registro.userId,
+      registro.alimento,
+      registro.quantidade,
+      registro.unidade ?? null,
+      registro.calorias,
+      registro.data
+    ).run();
+
+    return registro;
+  }
+
+  public async buscarAlimentos(userId: string, limite: number = 10): Promise<RegistroAlimento[]> {
+    if (!this.db) return [];
+
+    const resultado = await this.db.prepare(`
+      SELECT id, user_id AS userId, alimento, quantidade, unidade, calorias, data
+      FROM registros_alimentacao
+      WHERE user_id = ?
+      ORDER BY data DESC
+      LIMIT ?
+    `).bind(userId, limite).all<RegistroAlimento>();
+
+    return resultado.results;
   }
 }

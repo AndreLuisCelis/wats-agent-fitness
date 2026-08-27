@@ -46,6 +46,17 @@ export class FitnessAgent {
         }
         break;
 
+      case 'REGISTRAR_ALIMENTO':
+        if (analise.dadosAlimento) {
+          return await this.executarRegistroAlimento(
+            userId,
+            analise.dadosAlimento.alimento,
+            analise.dadosAlimento.quantidade,
+            analise.dadosAlimento.unidade
+          );
+        }
+        break;
+
       case 'CONSULTAR_REGISTROS':
         return await this.consultarRegistros(userId);
 
@@ -63,10 +74,11 @@ Você é o ${this.agentName}, um assistente virtual de fitness carismático, dir
 Sua tarefa é analisar a mensagem do usuário e extrair os dados em formato JSON válido.
 Retorne APENAS um objeto JSON com o seguinte formato:
 {
-  "intencaoIdentificada": "REGISTRAR_TREINO" | "REGISTRAR_PASSOS" | "REGISTRAR_AGUA" | "CONSULTAR_REGISTROS" | "CONVERSA_GERAL",
+  "intencaoIdentificada": "REGISTRAR_TREINO" | "REGISTRAR_PASSOS" | "REGISTRAR_AGUA" | "REGISTRAR_ALIMENTO" | "CONSULTAR_REGISTROS" | "CONVERSA_GERAL",
   "dadosTreino": { "tipo": "SPINNING" | "CALISTHENICS" | "WEIGHTLIFTING" | "WALKING" | "RUNNING" | "OTHER", "duracaoMinutos": number },
   "dadosPassos": { "quantidade": number },
   "dadosAgua": { "quantidadeMl": number },
+  "dadosAlimento": { "alimento": string, "quantidade": number, "unidade": string },
   "respostaTextual": "Sua mensagem motivacional aqui"
 }
     `;
@@ -84,7 +96,7 @@ Retorne APENAS um objeto JSON com o seguinte formato:
             properties: {
               intencaoIdentificada: {
                 type: 'string',
-                enum: ['REGISTRAR_TREINO', 'REGISTRAR_PASSOS', 'REGISTRAR_AGUA', 'CONSULTAR_REGISTROS', 'CONVERSA_GERAL']
+                enum: ['REGISTRAR_TREINO', 'REGISTRAR_PASSOS', 'REGISTRAR_AGUA', 'REGISTRAR_ALIMENTO', 'CONSULTAR_REGISTROS', 'CONVERSA_GERAL']
               },
               dadosTreino: {
                 type: 'object',
@@ -100,6 +112,15 @@ Retorne APENAS um objeto JSON com o seguinte formato:
               dadosAgua: {
                 type: 'object',
                 properties: { quantidadeMl: { type: 'number' } }
+              },
+              dadosAlimento: {
+                type: 'object',
+                properties: {
+                  alimento: { type: 'string' },
+                  quantidade: { type: 'number' },
+                  unidade: { type: 'string' }
+                },
+                required: ['alimento', 'quantidade']
               },
               respostaTextual: { type: 'string' }
             },
@@ -141,7 +162,7 @@ Retorne APENAS um objeto JSON com o seguinte formato:
     }
 
     const analise = valor as Partial<AnaliseIntencaoIA>;
-    const intencoes = ['REGISTRAR_TREINO', 'REGISTRAR_PASSOS', 'REGISTRAR_AGUA', 'CONSULTAR_REGISTROS', 'CONVERSA_GERAL'];
+    const intencoes = ['REGISTRAR_TREINO', 'REGISTRAR_PASSOS', 'REGISTRAR_AGUA', 'REGISTRAR_ALIMENTO', 'CONSULTAR_REGISTROS', 'CONVERSA_GERAL'];
     if (!intencoes.includes(analise.intencaoIdentificada ?? '') || typeof analise.respostaTextual !== 'string') {
       throw new Error('Resposta do Workers AI fora do contrato esperado.');
     }
@@ -191,6 +212,29 @@ Retorne APENAS um objeto JSON com o seguinte formato:
       }
     }
 
+    if (t.includes('comi') || t.includes('comer') || t.includes('comemos') || t.includes('comida')
+        || t.includes('aliment') || t.includes('refeição') || t.includes('refeicao')
+        || t.includes('lanche') || t.includes('pão') || t.includes('pao')) {
+      const numero = t.match(/(\d+(?:[.,]\d+)?)/);
+      const quantidade = numero ? Number(numero[1].replace(',', '.')) : 1;
+
+      let alimentoTexto = texto
+        .replace(/\b(?:comi|comer|comemos|comida|alimento|alimentação|alimentacao|refeição|refeicao|lanche)\b/gi, '')
+        .replace(/(\d+(?:[.,]\d+)?)/g, '')
+        .replace(/[.,;:!?]/g, '')
+        .trim();
+
+      if (!alimentoTexto) {
+        alimentoTexto = 'alimento';
+      }
+
+      return {
+        intencaoIdentificada: 'REGISTRAR_ALIMENTO',
+        dadosAlimento: { alimento: alimentoTexto, quantidade },
+        respostaTextual: 'Alimentação registrada via contingência!'
+      };
+    }
+
     if (t.includes('spinning') || t.includes('treino') || t.includes('calistenia')) {
       let tipo: TipoTreino = 'OTHER';
       if (t.includes('spinning')) tipo = 'SPINNING';
@@ -212,13 +256,14 @@ Retorne APENAS um objeto JSON com o seguinte formato:
   }
 
   private async consultarRegistros(userId: string): Promise<string> {
-    const [registros, aguaHoje] = await Promise.all([
+    const [registros, aguaHoje, alimentos] = await Promise.all([
       this.repository.buscarTreinos(userId),
-      this.repository.buscarAguaHoje(userId)
+      this.repository.buscarAguaHoje(userId),
+      this.repository.buscarAlimentos(userId)
     ]);
 
-    if (registros.length === 0 && aguaHoje === 0) {
-      return 'Ainda não encontrei treinos registrados para este usuário. Registre uma atividade e tente consultar novamente.';
+    if (registros.length === 0 && aguaHoje === 0 && alimentos.length === 0) {
+      return 'Ainda não encontrei registros para este usuário. Registre uma atividade (treino, passos, água ou alimentação) e tente consultar novamente.';
     }
 
     const secoes: string[] = [];
@@ -235,6 +280,24 @@ Retorne APENAS um objeto JSON com o seguinte formato:
 
       secoes.push(
         `Seus ${registros.length} registros de treino mais recentes:\n` +
+        `${linhas.join('\n')}\n\n` +
+        `Total estimado nesse período: ~${totalCalorias} kcal.`
+      );
+    }
+
+    if (alimentos.length > 0) {
+      const linhas = alimentos.map((registro, indice) => {
+        const data = new Date(registro.data).toLocaleString('pt-BR', {
+          dateStyle: 'short',
+          timeStyle: 'short'
+        });
+        const unidade = registro.unidade ? ` ${registro.unidade}` : '';
+        return `${indice + 1}. ${registro.alimento} - ${registro.quantidade}${unidade} - ~${registro.calorias} kcal (${data})`;
+      });
+      const totalCalorias = alimentos.reduce((total, registro) => total + registro.calorias, 0);
+
+      secoes.push(
+        `🍽️ Seus ${alimentos.length} registros de alimentação mais recentes:\n` +
         `${linhas.join('\n')}\n\n` +
         `Total estimado nesse período: ~${totalCalorias} kcal.`
       );
@@ -297,5 +360,64 @@ Retorne APENAS um objeto JSON com o seguinte formato:
       `• **Quantidade:** ${quantidadeMl.toLocaleString('pt-BR')} ml\n` +
       `• **Progresso:** ${percentual}% da meta diária de ${metaMl.toLocaleString('pt-BR')} ml\n\n` +
       (percentual >= 100 ? `🎉 Meta de hidratação atingida!` : `Faltam ${(metaMl - quantidadeMl).toLocaleString('pt-BR')} ml para a meta!`);
+  }
+
+  private async executarRegistroAlimento(
+    userId: string,
+    alimento: string,
+    quantidade: number,
+    unidade?: string
+  ): Promise<string> {
+    const kcalPorUnidade = this.estimarKcalAlimento(alimento);
+    const calorias = Math.round(quantidade * kcalPorUnidade);
+
+    await this.repository.salvarAlimento(userId, { alimento, quantidade, unidade }, calorias);
+
+    return `🍽️ **Consumo Registrado!**\n` +
+      `• **Alimento:** ${alimento}${unidade ? ` (${unidade})` : ''}\n` +
+      `• **Quantidade:** ${quantidade}\n` +
+      `• **Calorias estimadas:** ~${calorias} kcal\n\n` +
+      `Registro salvo! Continue cuidando da sua alimentação. 💚`;
+  }
+
+  private estimarKcalAlimento(alimento: string): number {
+    const a = alimento.toLowerCase();
+
+    const mapa: Record<string, number> = {
+      'pão francês': 135,
+      'pão': 130,
+      'pao': 130,
+      'pães': 130,
+      'paes': 130,
+      'arroz': 130,
+      'feijão': 55,
+      'feijao': 55,
+      'frango': 165,
+      'carne': 250,
+      'peixe': 200,
+      'ovo': 70,
+      'queijo': 120,
+      'presunto': 40,
+      'banana': 90,
+      'maçã': 70,
+      'maca': 70,
+      'laranja': 60,
+      'abacate': 160,
+      'batata': 80,
+      'macarrão': 200,
+      'macarrao': 200,
+      'pizza': 270,
+      'lasanha': 200,
+      'salada': 50,
+      'suco': 90,
+      'refrigerante': 130,
+      'cerveja': 150
+    };
+
+    for (const [chave, kcal] of Object.entries(mapa)) {
+      if (a.includes(chave)) return kcal;
+    }
+
+    return 100;
   }
 }
