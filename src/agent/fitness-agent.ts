@@ -89,12 +89,15 @@ export class FitnessAgent {
       .replace(/ç/g, 'c');
 
     const intencaoDeAcao = /(quero|vou|preciso)\s+(registrar|anotar|marcar|comer|beber|treinar|malhar|caminhar|correr)/.test(consulta);
+    const registraPassos = /(\d+(?:[.,]\d+)?)\s*(?:mil\s*)?passos/.test(consulta);
+    const registraTreino = /(\d+(?:[.,]\d+)?)\s*(?:min\b|minuto|minutos|hora|horas|km\b)/.test(consulta);
 
     if (!intencaoDeAcao && consulta.includes('agua') && /(quanto|quanta|quantos|qual|como esta|como ficou)/.test(consulta)) {
       return 'AGUA';
     }
 
-    if (!intencaoDeAcao && consulta.includes('passo') && /(quantos|quantidade|dei|fiz|hoje)/.test(consulta)) {
+    if (!intencaoDeAcao && !registraPassos && consulta.includes('passo')
+      && /(quantos|quantidade|quanto|quanta|qual|como esta|como ficou|hoje|meus)/.test(consulta)) {
       return 'PASSOS';
     }
 
@@ -105,10 +108,10 @@ export class FitnessAgent {
       return 'ALIMENTACAO';
     }
 
-    if (!intencaoDeAcao
+    if (!intencaoDeAcao && !registraTreino
       && (consulta.includes('treino') || consulta.includes('treinei') || consulta.includes('exercicio')
         || consulta.includes('atividade fisica'))
-      && /(quanto|quantos|quantas|qual|quais|o que|oque|como esta|como ficou|meus|meu|fiz|hoje|registros)/.test(consulta)) {
+      && /(quanto|quantos|quantas|qual|quais|o que|oque|como esta|como ficou|meus|meu|hoje|registros)/.test(consulta)) {
       return 'EXERCICIOS';
     }
 
@@ -457,35 +460,45 @@ Retorne APENAS um objeto JSON com o seguinte formato:
       duracaoMinutos: duracao
     }, calorias);
 
+    const treinosHoje = await this.repository.buscarTreinos(userId, 10, true);
+    const totalKcalHoje = treinosHoje.reduce((total, registro) => total + registro.calorias, 0);
+
     return `💪 **Excelente Treino Registrado!**\n` +
       `• **Modalidade:** ${tipo}\n` +
       `• **Duração:** ${duracao} minutos\n` +
-      `• **Gasto Estimado:** ~${calorias} kcal\n\n` +
+      `• **Gasto Estimado:** ~${calorias} kcal\n` +
+      `• **Total gasto hoje:** ~${totalKcalHoje.toLocaleString('pt-BR')} kcal\n\n` +
       `A disciplina supera a motivação. Parabéns pelo esforço de hoje! 🔥`;
   }
 
   private async executarRegistroPassos(userId: string, quantidade: number): Promise<string> {
     const meta = 7000;
     await this.repository.salvarPassos(userId, { quantidade });
-    const pct = Math.min(Math.round((quantidade / meta) * 100), 100);
+    const totalHoje = await this.repository.buscarPassosHoje(userId);
+    const pct = Math.min(Math.round((totalHoje / meta) * 100), 100);
     const barra = '▓'.repeat(Math.floor(pct / 10)) + '░'.repeat(10 - Math.floor(pct / 10));
+    const faltam = Math.max(meta - totalHoje, 0);
 
-    return `🏃 **Passos do Dia Registrados!**\n` +
-      `• **Progresso:** ${quantidade.toLocaleString('pt-BR')} / ${meta.toLocaleString('pt-BR')} passos\n` +
+    return `🏽 **Passos do Dia Registrados!**\n` +
+      `• **Registrado agora:** +${quantidade.toLocaleString('pt-BR')} passos\n` +
+      `• **Total hoje:** ${totalHoje.toLocaleString('pt-BR')} / ${meta.toLocaleString('pt-BR')} passos\n` +
       `• **Status:** ${pct}%\n` +
       `[${barra}]\n\n` +
-      (pct >= 100 ? `🎉 Meta diária batida! Excelente mobilidade!` : `Faltam ${meta - quantidade} passos para a meta!`);
+      (pct >= 100 ? '🎉 Meta diária batida! Excelente mobilidade!' : `Faltam ${faltam.toLocaleString('pt-BR')} passos para a meta!`);
   }
 
   private async executarRegistroAgua(userId: string, quantidadeMl: number): Promise<string> {
     const metaMl = 2000;
     await this.repository.salvarAgua(userId, { quantidadeMl });
-    const percentual = Math.min(Math.round((quantidadeMl / metaMl) * 100), 100);
+    const totalHoje = await this.repository.buscarAguaHoje(userId);
+    const percentual = Math.min(Math.round((totalHoje / metaMl) * 100), 100);
+    const faltamMl = Math.max(metaMl - totalHoje, 0);
 
     return `💧 **Água Registrada!**\n` +
-      `• **Quantidade:** ${quantidadeMl.toLocaleString('pt-BR')} ml\n` +
+      `• **Registrado agora:** +${quantidadeMl.toLocaleString('pt-BR')} ml\n` +
+      `• **Total hoje:** ${totalHoje.toLocaleString('pt-BR')} ml\n` +
       `• **Progresso:** ${percentual}% da meta diária de ${metaMl.toLocaleString('pt-BR')} ml\n\n` +
-      (percentual >= 100 ? `🎉 Meta de hidratação atingida!` : `Faltam ${(metaMl - quantidadeMl).toLocaleString('pt-BR')} ml para a meta!`);
+      (percentual >= 100 ? `🎉 Meta de hidratação atingida!` : `Faltam ${faltamMl.toLocaleString('pt-BR')} ml para a meta!`);
   }
 
   private async executarRegistroAlimento(
@@ -499,10 +512,14 @@ Retorne APENAS um objeto JSON com o seguinte formato:
 
     await this.repository.salvarAlimento(userId, { alimento, quantidade, unidade }, calorias);
 
+    const alimentosHoje = await this.repository.buscarAlimentos(userId, 10, true);
+    const totalKcalHoje = alimentosHoje.reduce((total, registro) => total + registro.calorias, 0);
+
     return `🍽️ **Consumo Registrado!**\n` +
       `• **Alimento:** ${alimento}${unidade ? ` (${unidade})` : ''}\n` +
       `• **Quantidade:** ${quantidade}\n` +
-      `• **Calorias estimadas:** ~${calorias} kcal\n\n` +
+      `• **Calorias estimadas:** ~${calorias} kcal\n` +
+      `• **Total consumido hoje:** ~${totalKcalHoje.toLocaleString('pt-BR')} kcal\n\n` +
       `Registro salvo! Continue cuidando da sua alimentação. 💚`;
   }
 

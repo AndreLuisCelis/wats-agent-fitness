@@ -409,14 +409,15 @@ A estimativa é calculada assim:
 calorias = duração em minutos × fator da modalidade
 ```
 
-O resultado é arredondado, salvo em `registros_treino` pelo `FitnessRepository` e devolvido em uma mensagem motivacional. Da mesma forma, passos e água são somados em `metricas_diarias`.
+O resultado é arredondado, salvo em `registros_treino` pelo `FitnessRepository` e devolvido em uma mensagem motivacional. A confirmação também mostra o **total de kcal gasto no dia**. Da mesma forma, passos e água são somados em `metricas_diarias`.
 
 ### Registro de passos
 
-`executarRegistroPassos` usa uma meta fixa de 7.000 passos. A resposta mostra:
+`executarRegistroPassos` usa uma meta fixa de 7.000 passos. Após salvar, a resposta consulta o total acumulado do dia. Ela mostra:
 
-- passos realizados;
-- percentual da meta, limitado a 100%;
+- o incremento registrado agora (`+2.000 passos`);
+- o total acumulado do dia (`8.000 / 7.000 passos`);
+- o percentual da meta sobre o **total do dia**, limitado a 100%;
 - uma barra visual com 10 posições;
 - quantos passos faltam ou uma mensagem de meta alcançada.
 
@@ -444,7 +445,7 @@ O cálculo é:
 calorias = quantidade × kcal por porção do alimento
 ```
 
-O resultado é arredondado, salvo em `registros_alimentacao` e devolvido em uma mensagem de confirmação. Alimentos fora da tabela usam um valor padrão de 100 kcal por porção. Essa estimativa é simplificada e não substitui orientação nutricional profissional.
+O resultado é arredondado, salvo em `registros_alimentacao` e devolvido em uma mensagem de confirmação. A confirmação também mostra o **total de kcal consumido no dia**. Alimentos fora da tabela usam um valor padrão de 100 kcal por porção. Essa estimativa é simplificada e não substitui orientação nutricional profissional.
 
 ### Consultas respondidas por regras locais
 
@@ -457,7 +458,9 @@ O método `identificarConsultaLocal` é a primeira etapa do `processarMensagem`.
 - `HOJE` (ex.: `o que registrei hoje`) → `consultarRegistros(apenasHoje = true)`;
 - `GERAL` (ex.: `meus registros`, `meu histórico`) → `consultarRegistros`.
 
-Uma proteção importante: mensagens com intenção de ação (`quero registrar`, `vou comer`, `preciso anotar` etc.) **nunca** são capturadas pelas regras locais — elas seguem para o Workers AI para serem registradas corretamente.
+Uma proteção importante: mensagens com intenção de ação (`quero registrar`, `vou comer`, `preciso anotar` etc.) **nunca** são capturadas pelas regras locais — elas seguem para o Workers AI para serem registradas corretamente. O mesmo vale para mensagens que trazem dados para registrar (número + unidade), como `dei 8000 passos`, `bebi 200 ml` ou `fiz 30 min de corrida` — essas sempre passam pela IA para gravar o registro.
+
+As confirmações de registro (água, passos, treino e alimentação) mostram o **total acumulado do dia** após o registro, evitando valores incoerentes como "faltam 1800 ml" quando já foram consumidos mais de 1.500 ml.
 
 ## Capítulo 4 — O ecossistema Node.js e npm
 
