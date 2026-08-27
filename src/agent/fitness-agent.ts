@@ -20,7 +20,10 @@ export class FitnessAgent {
       console.log(`[${this.agentName}] Consulta respondida por regras locais: ${consultaLocal}.`);
       if (consultaLocal === 'AGUA') return await this.consultarAguaHoje(userId);
       if (consultaLocal === 'PASSOS') return await this.consultarPassosHoje(userId);
-      return await this.consultarRegistros(userId, consultaLocal === 'HOJE');
+      if (consultaLocal === 'ALIMENTACAO') return await this.consultarAlimentacao(userId, /hoje/.test(mensagemTexto));
+      if (consultaLocal === 'EXERCICIOS') return await this.consultarTreinos(userId, /hoje/.test(mensagemTexto));
+      if (consultaLocal === 'HOJE') return await this.consultarRegistros(userId, true);
+      return await this.consultarRegistros(userId);
     }
 
     const analise = await this.interpretarComWorkersAI(mensagemTexto);
@@ -76,7 +79,7 @@ export class FitnessAgent {
     return "Não consegui entender completamente seus dados de treino. Pode informar algo como: 'Fiz 45 min de spinning' ou 'Dei 8000 passos'?";
   }
 
-  private identificarConsultaLocal(texto: string): 'HOJE' | 'AGUA' | 'PASSOS' | 'TREINOS' | null {
+  private identificarConsultaLocal(texto: string): 'HOJE' | 'AGUA' | 'PASSOS' | 'ALIMENTACAO' | 'EXERCICIOS' | 'GERAL' | null {
     const consulta = texto.toLowerCase()
       .replace(/[áàâãä]/g, 'a')
       .replace(/[éèêë]/g, 'e')
@@ -85,22 +88,38 @@ export class FitnessAgent {
       .replace(/[úùûü]/g, 'u')
       .replace(/ç/g, 'c');
 
-    if (consulta.includes('agua') && /(quanto|quanta|quantos|qual|como esta|como ficou)/.test(consulta)) {
+    const intencaoDeAcao = /(quero|vou|preciso)\s+(registrar|anotar|marcar|comer|beber|treinar|malhar|caminhar|correr)/.test(consulta);
+
+    if (!intencaoDeAcao && consulta.includes('agua') && /(quanto|quanta|quantos|qual|como esta|como ficou)/.test(consulta)) {
       return 'AGUA';
     }
 
-    if (consulta.includes('passo') && /(quantos|quantidade|dei|fiz|hoje)/.test(consulta)) {
+    if (!intencaoDeAcao && consulta.includes('passo') && /(quantos|quantidade|dei|fiz|hoje)/.test(consulta)) {
       return 'PASSOS';
     }
 
+    if (!intencaoDeAcao
+      && (consulta.includes('comi') || consulta.includes('alimenta') || consulta.includes('alimento')
+        || consulta.includes('comida') || consulta.includes('refeicao') || consulta.includes('caloria'))
+      && /(quanto|quanta|quantas|quantos|o que|oque|qual|quais|como esta|como ficou|meus|meu|minha|minhas|registros)/.test(consulta)) {
+      return 'ALIMENTACAO';
+    }
+
+    if (!intencaoDeAcao
+      && (consulta.includes('treino') || consulta.includes('treinei') || consulta.includes('exercicio')
+        || consulta.includes('atividade fisica'))
+      && /(quanto|quantos|quantas|qual|quais|o que|oque|como esta|como ficou|meus|meu|fiz|hoje|registros)/.test(consulta)) {
+      return 'EXERCICIOS';
+    }
+
     if (consulta.includes('o que registrei hoje') || consulta.includes('meus registros de hoje')
-      || consulta.includes('historico de hoje') || consulta.includes('historico do dia')) {
+      || consulta.includes('historico de hoje') || consulta.includes('historico do dia')
+      || consulta.includes('registros de hoje')) {
       return 'HOJE';
     }
 
-    if (consulta.includes('meus treinos') || consulta.includes('meu treino')
-      || consulta.includes('meus registros') || consulta.includes('meu historico')) {
-      return 'TREINOS';
+    if (consulta.includes('meus registros') || consulta.includes('meu historico') || consulta.includes('meus historico')) {
+      return 'GERAL';
     }
 
     return null;
@@ -370,6 +389,55 @@ Retorne APENAS um objeto JSON com o seguinte formato:
     return passosHoje > 0
       ? `Você deu ${passosHoje.toLocaleString('pt-BR')} passos hoje (${percentual}% da meta de ${meta.toLocaleString('pt-BR')}).`
       : 'Você ainda não registrou passos hoje.';
+  }
+
+  private async consultarAlimentacao(userId: string, apenasHoje: boolean = false): Promise<string> {
+    const alimentos = await this.repository.buscarAlimentos(userId, 10, apenasHoje);
+
+    if (alimentos.length === 0) {
+      return apenasHoje
+        ? 'Você ainda não registrou alimentação hoje.'
+        : 'Ainda não encontrei registros de alimentação para você. Registre um consumo para acompanhar.';
+    }
+
+    const filtro = apenasHoje ? ' de hoje' : ' mais recentes';
+    const linhas = alimentos.map((registro, indice) => {
+      const data = new Date(registro.data).toLocaleString('pt-BR', {
+        dateStyle: 'short',
+        timeStyle: 'short'
+      });
+      const unidade = registro.unidade ? ` ${registro.unidade}` : '';
+      return `${indice + 1}. ${registro.alimento} - ${registro.quantidade}${unidade} - ~${registro.calorias} kcal (${data})`;
+    });
+    const totalCalorias = alimentos.reduce((total, registro) => total + registro.calorias, 0);
+
+    return `🍽️ Seus ${alimentos.length} registros de alimentação${filtro}:\n` +
+      `${linhas.join('\n')}\n\n` +
+      `Total estimado: ~${totalCalorias} kcal.`;
+  }
+
+  private async consultarTreinos(userId: string, apenasHoje: boolean = false): Promise<string> {
+    const treinos = await this.repository.buscarTreinos(userId, 10, apenasHoje);
+
+    if (treinos.length === 0) {
+      return apenasHoje
+        ? 'Você ainda não registrou exercícios hoje.'
+        : 'Ainda não encontrei registros de exercícios para você. Registre uma atividade para acompanhar.';
+    }
+
+    const filtro = apenasHoje ? ' de hoje' : ' mais recentes';
+    const linhas = treinos.map((registro, indice) => {
+      const data = new Date(registro.data).toLocaleString('pt-BR', {
+        dateStyle: 'short',
+        timeStyle: 'short'
+      });
+      return `${indice + 1}. ${registro.tipo} - ${registro.duracaoMinutos} min - ~${registro.calorias} kcal (${data})`;
+    });
+    const totalCalorias = treinos.reduce((total, registro) => total + registro.calorias, 0);
+
+    return `💪 Seus ${treinos.length} registros de exercícios${filtro}:\n` +
+      `${linhas.join('\n')}\n\n` +
+      `Total estimado: ~${totalCalorias} kcal.`;
   }
 
   private async executarRegistroTreino(userId: string, tipo: TipoTreino, duracao: number): Promise<string> {

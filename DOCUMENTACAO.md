@@ -148,6 +148,8 @@ Responsabilidades implementadas:
 - registrar um treino calculando calorias estimadas;
 - registrar passos e mostrar o progresso da meta diária;
 - registrar água e mostrar o progresso da hidratação;
+- registrar alimentos com estimativa de calorias;
+- responder consultas frequentes por regras locais, sem chamar a IA;
 - responder conversas gerais;
 - usar uma regra de contingência quando a IA não estiver disponível.
 
@@ -155,13 +157,18 @@ Ainda faltam validações e tratamento de todos os tipos de eventos do WhatsApp.
 
 ### `src/repositories/fitness-repository.ts`
 
-Este arquivo faz a ponte entre a regra de negócio e o banco D1. O agente não precisa conhecer detalhes de SQL: ele apenas pede ao `FitnessRepository` para salvar um treino, passos ou água.
+Este arquivo faz a ponte entre a regra de negócio e o banco D1. O agente não precisa conhecer detalhes de SQL: ele apenas pede ao `FitnessRepository` para salvar um treino, passos, água ou alimento.
 
-O repositório funciona com três operações:
+O repositório funciona com estas operações:
 
 - `salvarTreino`: grava usuário, modalidade, duração, calorias e data;
 - `salvarPassos`: soma os passos ao registro do usuário no dia atual;
-- `salvarAgua`: soma a água, em mililitros, ao registro do usuário no dia atual.
+- `salvarAgua`: soma a água, em mililitros, ao registro do usuário no dia atual;
+- `salvarAlimento`: grava usuário, alimento, quantidade, unidade, calorias e data;
+- `buscarTreinos`: lista os treinos do usuário, com filtro opcional pelo dia atual;
+- `buscarAlimentos`: lista os alimentos do usuário, com filtro opcional pelo dia atual;
+- `buscarAguaHoje`: retorna o total de água consumida hoje;
+- `buscarPassosHoje`: retorna o total de passos registrados hoje.
 
 O banco é opcional no código (`DB?`). Assim, os testes locais continuam conseguindo executar a conversa mesmo antes de um binding D1 ser configurado. Quando o binding existe, os dados são persistidos.
 
@@ -174,7 +181,15 @@ Uma migração é uma receita versionada para criar ou alterar o banco. Esta pri
 
 Também foram adicionados índices e restrições SQL. Por exemplo, duração e calorias não podem assumir valores inválidos, e a combinação de usuário com data identifica uma única métrica diária.
 
-O banco D1 `whatsapp-fitness-agent-db` foi criado na Cloudflare e a migração `0001_create_fitness_tables.sql` foi aplicada nos ambientes local e remoto.
+### `migrations/0002_create_food_tables.sql`
+
+A segunda migração adiciona a tabela:
+
+- `registros_alimentacao`, para cada alimento consumido, com alimento, quantidade, unidade, calorias e data.
+
+Ela também cria um índice por usuário e data e usa restrições como `quantidade > 0` e `calorias >= 0`.
+
+O banco D1 `whatsapp-fitness-agent-db` foi criado na Cloudflare e as migrações `0001_create_fitness_tables.sql` e `0002_create_food_tables.sql` foram aplicadas nos ambientes local e remoto.
 
 ### `src/types/`
 
@@ -208,7 +223,7 @@ Representa um treino individual registrado pelo usuário. Ele guarda:
 - `userId`: identificador do usuário;
 - `tipo`: modalidade do treino;
 - `duracaoMinutos`: duração em minutos;
-- `caloriasEstimadas`: estimativa de calorias;
+- `calorias`: estimativa de calorias gastas;
 - `data`: data do registro.
 
 Exemplo conceitual:
@@ -219,8 +234,23 @@ const treino: RegistroTreino = {
   userId: 'usuario-001',
   tipo: 'RUNNING',
   duracaoMinutos: 30,
-  caloriasEstimadas: 280,
+  calorias: 280,
   data: '2026-08-25'
+};
+```
+
+#### `DadosAlimento` e `RegistroAlimento`
+
+Representam um alimento consumido pelo usuário. `DadosAlimento` guarda o que veio da mensagem (`alimento`, `quantidade` e `unidade` opcional); `RegistroAlimento` acrescenta as `calorias` estimadas, o `userId` e a `data`.
+
+```ts
+const alimento: RegistroAlimento = {
+  userId: 'usuario-001',
+  alimento: 'pão',
+  quantidade: 3,
+  unidade: 'unidade',
+  calorias: 390,
+  data: '2026-08-27T14:20:00.000Z'
 };
 ```
 
@@ -239,14 +269,17 @@ O campo `intencaoIdentificada` também usa uma lista limitada de opções:
 - `REGISTRAR_TREINO`;
 - `REGISTRAR_PASSOS`;
 - `REGISTRAR_AGUA`;
-- `CONSULTAR_PROGRESSO`;
+- `REGISTRAR_ALIMENTO`;
+- `CONSULTAR_REGISTROS`;
 - `CONVERSA_GERAL`.
 
-Os campos `dadosTreino`, `dadosPassos` e `dadosAgua` são opcionais porque cada intenção precisa de informações diferentes. Uma mensagem sobre água não precisa carregar dados de treino.
+Os campos `dadosTreino`, `dadosPassos`, `dadosAgua` e `dadosAlimento` são opcionais porque cada intenção precisa de informações diferentes. Uma mensagem sobre água não precisa carregar dados de treino.
 
 O campo `respostaTextual` guarda a resposta que poderá ser enviada ao usuário. `pensamentoIa` registra o conteúdo extraído da tag `<think>` e deverá ser avaliado com cuidado antes de ser exposto ou armazenado.
 
 O campo `dadosAgua` contém `quantidadeMl`, a quantidade de água identificada na mensagem. Quando a intenção é `REGISTRAR_AGUA`, o agente calcula o percentual de uma meta diária fixa de 2.000 ml e informa quanto falta para atingir essa meta.
+
+O campo `dadosAlimento` contém `alimento` (ex.: `pão`), `quantidade` (ex.: `3`) e `unidade` opcional (ex.: `unidade`). Quando a intenção é `REGISTRAR_ALIMENTO`, o agente estima as calorias por uma tabela fixa de alimentos e grava o consumo em `registros_alimentacao`.
 
 #### `Env`
 
@@ -286,10 +319,16 @@ Este é o ponto de entrada da lógica do agente. Ele recebe:
 - `userId`: identificação do usuário;
 - `mensagemTexto`: texto enviado pelo usuário.
 
-O caminho percorrido, depois que o handler recebe uma mensagem de texto, é:
+Antes de chamar a IA, o método tenta responder por **regras locais**. Se a frase for uma consulta reconhecida, a resposta vem direto do D1:
 
 ```text
 mensagemTexto
+  |
+  v
+identificarConsultaLocal
+  |
+  +--> consulta reconhecida -> resposta direta do D1
+  |                            (água, passos, alimentação, exercícios, hoje, geral)
   |
   v
 interpretarComWorkersAI
@@ -297,17 +336,23 @@ interpretarComWorkersAI
   v
 intencaoIdentificada
   |
-  +--> REGISTRAR_TREINO  -> resposta do treino
+  +--> REGISTRAR_TREINO     -> grava o treino e responde
   |
-  +--> REGISTRAR_PASSOS  -> resposta dos passos
+  +--> REGISTRAR_PASSOS     -> grava os passos e responde
   |
-  +--> CONVERSA_GERAL    -> resposta textual da IA
+  +--> REGISTRAR_AGUA       -> grava a água e responde
+  |
+  +--> REGISTRAR_ALIMENTO   -> grava o alimento e responde
+  |
+  +--> CONSULTAR_REGISTROS  -> responde com os registros do usuário
+  |
+  +--> CONVERSA_GERAL       -> resposta textual da IA
   |
   v
 mensagem de orientação se faltarem dados
 ```
 
-O método já registra no console o nome do agente, o usuário e a mensagem recebida. O `userId` ainda é usado apenas nesse registro; ele não é persistido em banco de dados.
+O método registra no console o nome do agente, o usuário e a mensagem recebida. Quando uma consulta é respondida por regras locais, o log exibe `Consulta respondida por regras locais: <TIPO>`.
 
 ### A interpretação com Workers AI
 
@@ -336,12 +381,14 @@ Se a chamada à IA falhar ou retornar um JSON inválido, o agente não encerra a
 
 Essa regra simples procura palavras conhecidas:
 
+- `registro`, `histórico`, `historico` ou `treinos` levam a uma consulta de registros;
+- `passo`, `caminhei` ou `caminhada` levam a um registro de passos;
+- `água`, `agua` ou `hidrata` levam a um registro de água;
+- `comi`, `comer`, `comida`, `aliment`, `refeição`, `lanche`, `pão` ou `pao` levam a um registro de alimento;
 - `spinning`, `treino` ou `calistenia` levam a um registro de treino;
-- `spinning` vira `SPINNING`;
-- `calistenia` vira `CALISTHENICS`;
 - qualquer outra mensagem recebe uma saudação padrão.
 
-No fallback, a duração padrão usada para um treino é de 40 minutos. Isso é útil como contingência de desenvolvimento, mas deverá ser refinado antes de um uso real, pois não substitui a extração correta dos dados.
+No fallback, a duração padrão usada para um treino é de 40 minutos e a quantidade padrão para um alimento é 1. Isso é útil como contingência de desenvolvimento, mas deverá ser refinado antes de um uso real, pois não substitui a extração correta dos dados.
 
 ### Registro de treino e calorias
 
@@ -362,7 +409,7 @@ A estimativa é calculada assim:
 calorias = duração em minutos × fator da modalidade
 ```
 
-O resultado é arredondado e devolvido em uma mensagem motivacional. Apesar do nome “registro”, essa primeira versão ainda não salva o treino em banco; ela apenas monta a confirmação para o usuário.
+O resultado é arredondado, salvo em `registros_treino` pelo `FitnessRepository` e devolvido em uma mensagem motivacional. Da mesma forma, passos e água são somados em `metricas_diarias`.
 
 ### Registro de passos
 
@@ -374,6 +421,43 @@ O resultado é arredondado e devolvido em uma mensagem motivacional. Apesar do n
 - quantos passos faltam ou uma mensagem de meta alcançada.
 
 Também é usado `toLocaleString('pt-BR')` para exibir os números no formato brasileiro.
+
+### Registro de alimentação e calorias
+
+`executarRegistroAlimento` recebe o alimento, a quantidade e uma unidade opcional. A estimativa de calorias usa uma tabela fixa de alimentos comuns:
+
+| Alimento | kcal por porção |
+| --- | ---: |
+| `pão` / `pães` | 130 |
+| `arroz` | 130 |
+| `feijão` | 55 |
+| `frango` | 165 |
+| `carne` | 250 |
+| `ovo` | 70 |
+| `banana` | 90 |
+| `pizza` | 270 |
+| ... | ... |
+
+O cálculo é:
+
+```text
+calorias = quantidade × kcal por porção do alimento
+```
+
+O resultado é arredondado, salvo em `registros_alimentacao` e devolvido em uma mensagem de confirmação. Alimentos fora da tabela usam um valor padrão de 100 kcal por porção. Essa estimativa é simplificada e não substitui orientação nutricional profissional.
+
+### Consultas respondidas por regras locais
+
+O método `identificarConsultaLocal` é a primeira etapa do `processarMensagem`. Ele normaliza o texto (remove acentos) e procura padrões de consulta. Quando reconhece uma, responde consultando o D1 diretamente, sem custo de IA:
+
+- `AGUA` (ex.: `quanto de água bebi hoje`) → `consultarAguaHoje`, retorna o total de ml do dia;
+- `PASSOS` (ex.: `quantos passos dei hoje`) → `consultarPassosHoje`, retorna o total do dia;
+- `ALIMENTACAO` (ex.: `o que comi hoje`, `quantas calorias consumi`) → `consultarAlimentacao`, lista alimentos (de hoje ou recentes);
+- `EXERCICIOS` (ex.: `meus treinos`, `quantos exercícios fiz`) → `consultarTreinos`, lista treinos (de hoje ou recentes);
+- `HOJE` (ex.: `o que registrei hoje`) → `consultarRegistros(apenasHoje = true)`;
+- `GERAL` (ex.: `meus registros`, `meu histórico`) → `consultarRegistros`.
+
+Uma proteção importante: mensagens com intenção de ação (`quero registrar`, `vou comer`, `preciso anotar` etc.) **nunca** são capturadas pelas regras locais — elas seguem para o Workers AI para serem registradas corretamente.
 
 ## Capítulo 4 — O ecossistema Node.js e npm
 
@@ -618,9 +702,12 @@ Até agora, foram concluídas estas etapas:
 33. O `FitnessRepository` foi conectado ao agente para persistir treinos, passos e água.
 34. A migração foi aplicada nos ambientes local e remoto.
 35. Foram adicionados comandos npm para repetir as migrações.
-23. Foi implementada a função `responderWhatsApp` para chamar a Meta Graph API v18.0.
-24. O Worker passou a enviar respostas de texto ao número que originou a mensagem.
-25. Foi testada a inicialização com `npx wrangler dev`; o modo remoto foi bloqueado pela ausência de um subdomínio `workers.dev`.
+36. Foi implementado o registro de alimentação com a tabela `registros_alimentacao` e estimativa de calorias por alimento.
+37. A migração `0002_create_food_tables.sql` foi aplicada nos ambientes local e remoto.
+38. As consultas frequentes passaram a ser respondidas por regras locais, sem acionar o Workers AI (água, passos, alimentação e exercícios).
+39. Os registros de treino, passos, água e alimentação passaram a persistir no banco D1 (antes apenas exibiam a confirmação).
+40. O cliente Angular foi adicionado, consumindo o endpoint `POST /api/chat`.
+41. O Worker foi publicado em `https://whatsapp-fitness-agent.andreluiscelis.workers.dev`.
 
 ## Capítulo 9 — O que ainda não foi feito
 
@@ -629,19 +716,16 @@ Os seguintes itens ainda estão pendentes:
 - validação de autenticação e assinatura dos webhooks;
 - definição dos tipos das mensagens recebidas e enviadas pelo WhatsApp;
 - suporte a outros tipos de mensagem além de texto;
-- configuração final do modo local ou do subdomínio `workers.dev` para executar o Worker;
 - validação dos nomes das variáveis de ambiente usados pelo código e pelos tipos;
 - verificação da resposta da Meta Graph API e tratamento de falhas de envio;
 - validação do JSON recebido da IA com mais segurança;
-- tratamento de `CONSULTAR_PROGRESSO`;
-- validação de durações, passos e valores negativos;
+- validação de durações, passos, quantidades e valores negativos;
 - substituição de `AI: any` por um tipo mais específico;
-- configuração de variáveis de ambiente e segredos;
+- configuração dos segredos `WHATSAPP_*` com valores reais;
 - armazenamento do histórico das conversas;
 - tratamento de erros;
 - testes automatizados;
-- definição de um script de teste real;
-- publicação do Worker na Cloudflare.
+- definição de um script de teste real.
 
 ## Capítulo 10 — Git: o diário de bordo do projeto
 
@@ -789,9 +873,14 @@ Consultas frequentes agora são respondidas por regras locais antes da chamada a
 - `o que registrei hoje`;
 - `quanto de água bebi`;
 - `meus treinos`;
-- `quantos passos dei`.
+- `quantos passos dei`;
+- `o que comi hoje`;
+- `quantos exercícios fiz`;
+- `quantas calorias consumi hoje`;
+- `meus registros de alimentação`;
+- `meus registros de exercícios`.
 
-As consultas de água e passos retornam os totais do dia. A consulta do histórico de hoje filtra treinos e alimentos pela data atual. Quando nenhuma regra local é identificada, o fluxo continua usando o Workers AI normalmente.
+As consultas de água e passos retornam os totais do dia. As consultas de alimentação e exercícios listam os registros da categoria (filtrando por hoje quando a pergunta pede). A consulta do histórico geral e de hoje filtra treinos e alimentos pela data atual. Mensagens com intenção de ação (`quero registrar`, `vou comer`, etc.) jamais são capturadas pelas regras locais e continuam usando o Workers AI. Quando nenhuma regra local é identificada, o fluxo continua usando o Workers AI normalmente.
 
 Os manifests do projeto e do cliente declaram Node `22.22.3` ou superior, requisito do Angular CLI usado pelo frontend. Confira a versão instalada com `node --version` antes de executar o build.
 
@@ -799,7 +888,7 @@ O perfil `worker-startup.cpuprofile`, gerado pelo comando `wrangler check startu
 
 O teste confirma que o Worker consegue receber o evento e percorrer o handler. Para confirmar o envio pela Meta Graph API, ainda são necessárias credenciais válidas e variáveis `WHATSAPP_*` configuradas.
 
-O Worker está publicado em `https://whatsapp-fitness-agent.andreluiscelis.workers.dev`. A versão que inclui as consultas locais é `ca01d069-b7ec-49d0-9621-ffd3c5183475`.
+O Worker está publicado em `https://whatsapp-fitness-agent.andreluiscelis.workers.dev`. A versão que inclui as regras locais de água, passos, alimentação e exercícios é `2e56a102-ba55-4717-9423-5f0841993f5c`.
 
 ### Como testar com Postman
 
@@ -872,7 +961,7 @@ Quando o processamento terminar, o Postman deverá mostrar status `200` e um JSO
 
 O valor exato das calorias pode variar se o Workers AI interpretar a mensagem de outra forma. No fallback local, 45 minutos de spinning resultam em aproximadamente 473 kcal.
 
-#### Passo 4: testar água e passos
+#### Passo 4: testar água, passos e alimentação
 
 Para testar hidratação, troque apenas o valor de `text.body`:
 
@@ -886,7 +975,31 @@ Para testar passos:
 "body": "Dei 8000 passos"
 ```
 
-O agente usa uma meta diária de 2.000 ml para água e 7.000 passos para caminhada diária.
+Para testar alimentação:
+
+```json
+"body": "Comi 3 pães"
+```
+
+O agente usa uma meta diária de 2.000 ml para água e 7.000 passos para caminhada diária. As calorias dos alimentos vêm de uma tabela fixa de kcal por porção.
+
+#### Passo 4b: testar consultas respondidas por regras locais
+
+Depois de registrar alguns dados, pergunte ao agente:
+
+```json
+"body": "Quanto de água bebi hoje?"
+```
+
+```json
+"body": "O que comi hoje?"
+```
+
+```json
+"body": "Meus treinos"
+```
+
+Essas mensagens são reconhecidas por `identificarConsultaLocal` e respondidas consultando o D1 diretamente, sem acionar o Workers AI. Nos logs do agente, aparece a mensagem `Consulta respondida por regras locais: <TIPO>`.
 
 #### Passo 5: testar a validação do webhook
 
@@ -927,7 +1040,10 @@ curl local
 Worker local
   |
   v
-FitnessAgent + Workers AI
+regras locais (consulta direta ao D1)  -> quando a mensagem é uma consulta conhecida
+  |
+  v
+FitnessAgent + Workers AI              -> caso contrário
   |
   v
 EVENT_RECEIVED
