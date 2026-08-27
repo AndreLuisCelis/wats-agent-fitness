@@ -4,6 +4,7 @@ import { environment } from '../../environments/environment';
 
 export interface ChatResponse {
   resposta: string;
+  sugestoes?: string[];
 }
 
 @Injectable({ providedIn: 'root' })

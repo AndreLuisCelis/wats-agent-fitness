@@ -1,4 +1,4 @@
-import { AnaliseIntencaoIA, Env, TipoTreino } from '../types/fitness.js';
+import { AnaliseIntencaoIA, Env, RespostaAgente, TipoTreino } from '../types/fitness.js';
 import { FitnessRepository } from '../repositories/fitness-repository.js';
 
 export class FitnessAgent {
@@ -12,18 +12,18 @@ export class FitnessAgent {
     this.repository = new FitnessRepository(env.DB);
   }
 
-  public async processarMensagem(userId: string, mensagemTexto: string): Promise<string> {
+  public async processarMensagem(userId: string, mensagemTexto: string): Promise<RespostaAgente> {
     console.log(`[${this.agentName}] Recebida mensagem do usuário ${userId}: "${mensagemTexto}"`);
 
     const consultaLocal = this.identificarConsultaLocal(mensagemTexto);
     if (consultaLocal) {
       console.log(`[${this.agentName}] Consulta respondida por regras locais: ${consultaLocal}.`);
-      if (consultaLocal === 'AGUA') return await this.consultarAguaHoje(userId);
-      if (consultaLocal === 'PASSOS') return await this.consultarPassosHoje(userId);
-      if (consultaLocal === 'ALIMENTACAO') return await this.consultarAlimentacao(userId, /hoje/.test(mensagemTexto));
-      if (consultaLocal === 'EXERCICIOS') return await this.consultarTreinos(userId, /hoje/.test(mensagemTexto));
-      if (consultaLocal === 'HOJE') return await this.consultarRegistros(userId, true);
-      return await this.consultarRegistros(userId);
+      if (consultaLocal === 'AGUA') return { resposta: await this.consultarAguaHoje(userId) };
+      if (consultaLocal === 'PASSOS') return { resposta: await this.consultarPassosHoje(userId) };
+      if (consultaLocal === 'ALIMENTACAO') return { resposta: await this.consultarAlimentacao(userId, /hoje/.test(mensagemTexto)) };
+      if (consultaLocal === 'EXERCICIOS') return { resposta: await this.consultarTreinos(userId, /hoje/.test(mensagemTexto)) };
+      if (consultaLocal === 'HOJE') return { resposta: await this.consultarRegistros(userId, true) };
+      return { resposta: await this.consultarRegistros(userId) };
     }
 
     const analise = await this.interpretarComWorkersAI(mensagemTexto);
@@ -31,52 +31,74 @@ export class FitnessAgent {
     switch (analise.intencaoIdentificada) {
       case 'REGISTRAR_TREINO':
         if (analise.dadosTreino) {
-          return await this.executarRegistroTreino(
-            userId,
-            analise.dadosTreino.tipo,
-            analise.dadosTreino.duracaoMinutos
-          );
+          return {
+            resposta: await this.executarRegistroTreino(
+              userId,
+              analise.dadosTreino.tipo,
+              analise.dadosTreino.duracaoMinutos
+            )
+          };
         }
         break;
 
       case 'REGISTRAR_PASSOS':
         if (analise.dadosPassos) {
-          return await this.executarRegistroPassos(
-            userId,
-            analise.dadosPassos.quantidade
-          );
+          return {
+            resposta: await this.executarRegistroPassos(
+              userId,
+              analise.dadosPassos.quantidade
+            )
+          };
         }
         break;
 
       case 'REGISTRAR_AGUA':
         if (analise.dadosAgua) {
-          return await this.executarRegistroAgua(
-            userId,
-            analise.dadosAgua.quantidadeMl
-          );
+          return {
+            resposta: await this.executarRegistroAgua(
+              userId,
+              analise.dadosAgua.quantidadeMl
+            )
+          };
         }
         break;
 
       case 'REGISTRAR_ALIMENTO':
         if (analise.dadosAlimento) {
-          return await this.executarRegistroAlimento(
-            userId,
-            analise.dadosAlimento.alimento,
-            analise.dadosAlimento.quantidade,
-            analise.dadosAlimento.unidade
-          );
+          return {
+            resposta: await this.executarRegistroAlimento(
+              userId,
+              analise.dadosAlimento.alimento,
+              analise.dadosAlimento.quantidade,
+              analise.dadosAlimento.unidade
+            )
+          };
         }
         break;
 
       case 'CONSULTAR_REGISTROS':
-        return await this.consultarRegistros(userId);
+        return { resposta: await this.consultarRegistros(userId) };
 
       case 'CONVERSA_GERAL':
       default:
-        return analise.respostaTextual;
+        return { resposta: analise.respostaTextual, sugestoes: this.sugestoesPadrao() };
     }
 
-    return "Não consegui entender completamente seus dados de treino. Pode informar algo como: 'Fiz 45 min de spinning' ou 'Dei 8000 passos'?";
+    return {
+      resposta: "Não consegui entender completamente seus dados de treino. Pode informar algo como: 'Fiz 45 min de spinning' ou 'Dei 8000 passos'?",
+      sugestoes: this.sugestoesPadrao()
+    };
+  }
+
+  /** Atalhos exibidos pelo cliente web em respostas de conversa geral. */
+  private sugestoesPadrao(): string[] {
+    return [
+      'Fiz 30 min de corrida',
+      'Bebi 500 ml de água',
+      'Comi 2 bananas',
+      'O que comi hoje?',
+      'Meus registros'
+    ];
   }
 
   private identificarConsultaLocal(texto: string): 'HOJE' | 'AGUA' | 'PASSOS' | 'ALIMENTACAO' | 'EXERCICIOS' | 'GERAL' | null {
@@ -311,7 +333,7 @@ Retorne APENAS um objeto JSON com o seguinte formato:
 
     return {
       intencaoIdentificada: 'CONVERSA_GERAL',
-      respostaTextual: 'Olá! Sou seu assistente de fitness. Como foi seu treino hoje?'
+      respostaTextual: 'Olá! Eu sou seu assistente de fitness. 💪 Posso registrar treinos, passos, hidratação e alimentação, além de mostrar seus registros. O que gostaria de fazer?'
     };
   }
 

@@ -37,14 +37,14 @@ export default {
           const textoMensagem = message.text.body;
 
           const agent = new FitnessAgent(env);
-          const respostaIA = await agent.processarMensagem(userId, textoMensagem);
+          const { resposta } = await agent.processarMensagem(userId, textoMensagem);
 
-          await responderWhatsApp(env, userId, respostaIA);
+          await responderWhatsApp(env, userId, resposta);
 
           return new Response(JSON.stringify({
             status: 'ok',
             message: 'Mensagem processada com sucesso',
-            response: respostaIA
+            response: resposta
           }), {
             status: 200,
             headers: { 'Content-Type': 'application/json; charset=utf-8' }
@@ -116,8 +116,8 @@ async function processarChatWeb(request: Request, env: Env): Promise<Response> {
     }
 
     const agent = new FitnessAgent(env);
-    const resposta = await agent.processarMensagem(userId, mensagem);
-    return respostaJson({ resposta }, 200, env);
+    const { resposta, sugestoes } = await agent.processarMensagem(userId, mensagem);
+    return respostaJson({ resposta, sugestoes }, 200, env);
   } catch (error) {
     console.error('[Chat Web Error]:', error);
     return respostaJson({ erro: 'Não foi possível processar sua mensagem.' }, 500, env);

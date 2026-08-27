@@ -7,6 +7,7 @@ import { FitnessChatService } from './services/fitness-chat.service';
 interface Mensagem {
   autor: 'usuario' | 'agente';
   texto: string;
+  sugestoes?: string[];
 }
 
 @Component({
@@ -22,9 +23,14 @@ interface Mensagem {
         </header>
 
         <div #historico class="historico" aria-live="polite">
-          <article *ngFor="let item of mensagens" class="mensagem" [class.usuario]="item.autor === 'usuario'">
-            <span>{{ item.texto }}</span>
-          </article>
+          <ng-container *ngFor="let item of mensagens">
+            <article class="mensagem" [class.usuario]="item.autor === 'usuario'">
+              <span>{{ item.texto }}</span>
+            </article>
+            <div class="sugestoes-msg" *ngIf="item.sugestoes?.length" role="group" aria-label="Sugestões de mensagem">
+              <button *ngFor="let sugestao of item.sugestoes" type="button" [disabled]="enviando" (click)="usarSugestao(sugestao)">{{ sugestao }}</button>
+            </div>
+          </ng-container>
           <div *ngIf="enviando" class="digitando" aria-label="FitBot está respondendo"><b></b><b></b><b></b></div>
         </div>
 
@@ -73,8 +79,8 @@ export class AppComponent {
         this.rolarParaFim();
       }))
       .subscribe({
-        next: ({ resposta }) => {
-          this.mensagens.push({ autor: 'agente', texto: resposta });
+        next: ({ resposta, sugestoes }) => {
+          this.mensagens.push({ autor: 'agente', texto: resposta, sugestoes });
           this.changeDetector.detectChanges();
         },
         error: () => {

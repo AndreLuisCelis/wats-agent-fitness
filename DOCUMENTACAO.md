@@ -277,6 +277,8 @@ Os campos `dadosTreino`, `dadosPassos`, `dadosAgua` e `dadosAlimento` são opcio
 
 O campo `respostaTextual` guarda a resposta que poderá ser enviada ao usuário. `pensamentoIa` registra o conteúdo extraído da tag `<think>` e deverá ser avaliado com cuidado antes de ser exposto ou armazenado.
 
+Quando a intenção é `CONVERSA_GERAL`, o agente anexa `sugestoes` — uma lista curta de mensagens de exemplo (ex.: `Fiz 30 min de corrida`, `O que comi hoje?`) que o cliente web exibe como botões de atalho clicáveis. O webhook do WhatsApp ignora esse campo e envia apenas o texto da resposta.
+
 O campo `dadosAgua` contém `quantidadeMl`, a quantidade de água identificada na mensagem. Quando a intenção é `REGISTRAR_AGUA`, o agente calcula o percentual de uma meta diária fixa de 2.000 ml e informa quanto falta para atingir essa meta.
 
 O campo `dadosAlimento` contém `alimento` (ex.: `pão`), `quantidade` (ex.: `3`) e `unidade` opcional (ex.: `unidade`). Quando a intenção é `REGISTRAR_ALIMENTO`, o agente estima as calorias por uma tabela fixa de alimentos e grava o consumo em `registros_alimentacao`.
@@ -346,7 +348,7 @@ intencaoIdentificada
   |
   +--> CONSULTAR_REGISTROS  -> responde com os registros do usuário
   |
-  +--> CONVERSA_GERAL       -> resposta textual da IA
+  +--> CONVERSA_GERAL       -> resposta textual da IA (+ sugestões para o cliente web)
   |
   v
 mensagem de orientação se faltarem dados

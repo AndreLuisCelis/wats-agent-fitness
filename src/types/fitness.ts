@@ -27,6 +27,14 @@ export interface AnaliseIntencaoIA {
   dadosAlimento?: DadosAlimento;
   respostaTextual: string;
   pensamentoIa?: string;
+  sugestoes?: string[];
+}
+
+/** Resposta do agente para os canais de chat. */
+export interface RespostaAgente {
+  resposta: string;
+  /** Atalhos exibidos pelo cliente web quando não há uma ação específica. */
+  sugestoes?: string[];
 }
 
 export interface RegistroTreino {
