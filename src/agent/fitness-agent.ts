@@ -1,14 +1,28 @@
 import { AnaliseIntencaoIA, Env, RespostaAgente, TipoTreino } from '../types/fitness.js';
 import { FitnessRepository } from '../repositories/fitness-repository.js';
+import { consumirOrcamentoIA } from '../limites.js';
+
+/** Opções de execução do agente por requisição. */
+export interface OpcoesAgente {
+  /** Usuário autenticado (usado no orçamento de IA). Obrigatório para consumir orçamento. */
+  userId?: string;
+  /** Quando false, o agente responde apenas com regras locais/heurísticas (modo econômico). */
+  usarIA?: boolean;
+}
+
+const MODELO_IA = '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b';
+const TIMEOUT_IA_MS = 15_000;
 
 export class FitnessAgent {
   private env: Env;
   private agentName: string;
   private repository: FitnessRepository;
+  private opcoes: OpcoesAgente;
 
-  constructor(env: Env, agentName: string = 'FitBot Pro') {
+  constructor(env: Env, agentName: string = 'FitBot Pro', opcoes: OpcoesAgente = {}) {
     this.env = env;
     this.agentName = agentName;
+    this.opcoes = opcoes;
     this.repository = new FitnessRepository(env.DB);
   }
 
@@ -151,6 +165,18 @@ export class FitnessAgent {
   }
 
   private async interpretarComWorkersAI(texto: string): Promise<AnaliseIntencaoIA> {
+    if (this.opcoes.usarIA === false) {
+      console.log(`[${this.agentName}] IA desativada para esta requisição — respondendo por regras locais (modo econômico).`);
+      return this.fallbackHeuristico(texto);
+    }
+
+    // Orçamento diário de IA por usuário (degrada para regras locais ao estourar).
+    const orcamentoDisponivel = await consumirOrcamentoIA(this.env, this.opcoes.userId ?? '');
+    if (!orcamentoDisponivel) {
+      console.log(`[${this.agentName}] Orçamento diário de IA atingido — respondendo por regras locais.`);
+      return this.fallbackHeuristico(texto);
+    }
+
     const systemPrompt = `
 Você é o ${this.agentName}, um assistente virtual de fitness carismático, direto e motivador.
 Sua tarefa é analisar a mensagem do usuário e extrair os dados em formato JSON válido.
@@ -166,7 +192,7 @@ Retorne APENAS um objeto JSON com o seguinte formato:
     `;
 
     try {
-      const aiResponse: any = await this.env.AI.run('@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', {
+      const chamadaIa = this.env.AI.run(MODELO_IA, {
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: texto }
@@ -211,6 +237,8 @@ Retorne APENAS um objeto JSON com o seguinte formato:
         }
       });
 
+      const aiResponse: any = await this.comTempoLimite(chamadaIa);
+
       const resposta = aiResponse?.response;
       const rawText = typeof resposta === 'string' ? resposta : '';
       let pensamento = '';
@@ -236,6 +264,20 @@ Retorne APENAS um objeto JSON com o seguinte formato:
       console.error('Erro ao executar Workers AI, usando fallback heurístico:', error);
       return this.fallbackHeuristico(texto);
     }
+  }
+
+  /** Aplica tempo limite à chamada da IA; ao estourar, rejeita e cai no fallback heurístico. */
+  private comTempoLimite(chamada: Promise<any>): Promise<any> {
+    let temporizador: ReturnType<typeof setTimeout> | undefined;
+    const limite = new Promise<never>((_, rejeitar) => {
+      temporizador = setTimeout(
+        () => rejeitar(new Error(`Timeout do Workers AI após ${TIMEOUT_IA_MS / 1000}s`)),
+        TIMEOUT_IA_MS
+      );
+    });
+    return Promise.race([chamada, limite]).finally(() => {
+      if (temporizador !== undefined) clearTimeout(temporizador);
+    });
   }
 
   private validarAnalise(valor: unknown): AnaliseIntencaoIA {

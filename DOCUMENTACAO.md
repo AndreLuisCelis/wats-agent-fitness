@@ -151,7 +151,8 @@ Responsabilidades implementadas:
 - registrar alimentos com estimativa de calorias;
 - responder consultas frequentes por regras locais, sem chamar a IA;
 - responder conversas gerais;
-- usar uma regra de contingência quando a IA não estiver disponível.
+- usar uma regra de contingência quando a IA não estiver disponível;
+- autenticar usuários do cliente web (nome, e-mail único e senha) e emitir tokens JWT.
 
 Ainda faltam validações e tratamento de todos os tipos de eventos do WhatsApp.
 
@@ -189,7 +190,27 @@ A segunda migração adiciona a tabela:
 
 Ela também cria um índice por usuário e data e usa restrições como `quantidade > 0` e `calorias >= 0`.
 
-O banco D1 `whatsapp-fitness-agent-db` foi criado na Cloudflare e as migrações `0001_create_fitness_tables.sql` e `0002_create_food_tables.sql` foram aplicadas nos ambientes local e remoto.
+O banco D1 `whatsapp-fitness-agent-db` foi criado na Cloudflare e as migrações `0001_create_fitness_tables.sql`, `0002_create_food_tables.sql` e `0003_add_auth_and_limits.sql` foram aplicadas nos ambientes local e remoto.
+
+### `migrations/0003_add_auth_and_limits.sql`
+
+A terceira migração adiciona duas tabelas para a autenticação do cliente web e o controle de consumo:
+
+- `usuarios`: id, nome, e-mail único, hash da senha, salt aleatório e data de criação;
+- `contadores`: contadores por chave e janela de tempo (minuto ou dia), usados pelo rate limiting e pelo orçamento de IA, com chave composta (`chave`, `janela`).
+
+### `migrations/0004_usuarios_nome_email_senha.sql`
+
+A quarta migração recria a tabela `usuarios` com o modelo atual do cadastro:
+
+- `id`: UUID gerado com `crypto.randomUUID()`;
+- `nome`: nome de exibição do usuário (2 a 60 caracteres);
+- `email`: `TEXT NOT NULL COLLATE NOCASE UNIQUE` — o banco rejeita o mesmo e-mail mesmo com variações de maiúsculas/minúsculas;
+- `senha_hash`: hash **PBKDF2** (SHA-256, 100.000 iterações) da senha;
+- `salt`: aleatório de 128 bits por usuário;
+- `criado_em`: data/hora de criação.
+
+A tabela foi recriada (em vez de alterada) porque a autenticação web ainda não tinha usuários reais em produção.
 
 ### `src/types/`
 
@@ -464,6 +485,29 @@ Uma proteção importante: mensagens com intenção de ação (`quero registrar`
 
 As confirmações de registro (água, passos, treino e alimentação) mostram o **total acumulado do dia** após o registro, evitando valores incoerentes como "faltam 1800 ml" quando já foram consumidos mais de 1.500 ml.
 
+### Autenticação do cliente web e proteção do userId
+
+A API web (`/api/chat`) exige um token JWT válido no header `Authorization: Bearer <token>`. O `userId` **sempre vem do token** — o corpo da requisição não é mais consultado, o que impede um usuário de ler ou gravar registros em nome de outro.
+
+Como a autenticação funciona:
+
+1. `POST /api/auth/registro` com `{ nome, email, senha }`: valida o nome (2 a 60 caracteres), o e-mail (formato válido, até 120 caracteres) e a senha (6 a 72 caracteres) e cria a conta em `usuarios`. O e-mail é normalizado para minúsculas e a coluna tem `UNIQUE COLLATE NOCASE`: e-mail já cadastrado responde `409` com "E-mail já cadastrado. Faça login." — inclusive quando dois registros disputam o mesmo e-mail simultaneamente (rede de segurança no `catch` da constraint). A senha nunca é armazenada: grava-se o hash **PBKDF2** (SHA-256, 100.000 iterações) com um salt aleatório de 128 bits por usuário.
+2. `POST /api/auth/login` com `{ email, senha }`: recupera o salt do usuário, recalcula o hash PBKDF2 e, se bater, emite um **JWT HS256** com o `id` do usuário no campo `sub` e validade de 24 horas. Credencial errada responde `401` com mensagem genérica ("E-mail ou senha inválido.").
+3. `POST /api/chat` com `Authorization: Bearer <token>` e `{ mensagem }`: o servidor valida assinatura (comparação em tempo constante) e expiração do token, e usa o `sub` como usuário. Sem token ou com token inválido/expirado, responde `401`.
+
+Os arquivos responsáveis são `src/auth.ts` (hash PBKDF2 da senha, JWT e extração do header, tudo com Web Crypto, sem dependências externas) e `src/index.ts` (rotas `/api/auth/registro` e `/api/auth/login`). O segredo de assinatura fica na variável `AUTH_SECRET` (secret do Wrangler em produção; `.dev.vars` no local).
+
+O webhook do WhatsApp (`/webhook`) continua **sem JWT** — ele é protegido pelo `WHATSAPP_VERIFY_TOKEN` e segue o fluxo original.
+
+### Rate limiting e orçamento de IA
+
+O arquivo `src/limites.ts` implementa dois controles, ambos com contadores na tabela `contadores` do D1:
+
+- **Rate limiting do chat** (`verificarLimitesChat`): limita o usuário a 12 mensagens por minuto e 300 por dia. Ao exceder, o `/api/chat` responde `429` com uma mensagem amigável. Os limites podem ser sobrescritos pelas variáveis `LIMITE_MSGS_MINUTO` e `LIMITE_MSGS_DIA`.
+- **Orçamento de IA** (`consumirOrcamentoIA`): cada usuário tem direito a 60 chamadas do Workers AI por dia (sobrescritável por `LIMITE_IA_DIA`). Ao estourar, o agente responde pelas regras locais/heurísticas em vez de falhar — degradação graciosa. A limpeza de buckets antigos acontece de forma oportunista (2% das requisições).
+
+Além do orçamento, a chamada ao Workers AI recebeu um **timeout de 15 segundos** (`comTempoLimite`, com `Promise.race`). Antes, quando a IA ficava instável, o usuário esperava mais de 80 segundos para então cair no fallback heurístico; agora o fallback entra em 15 segundos no pior caso.
+
 ## Capítulo 4 — O ecossistema Node.js e npm
 
 O `package.json` é o arquivo principal de configuração de um projeto Node.js. Ele identifica o projeto, lista dependências e define comandos que podem ser executados pelo npm.
@@ -713,12 +757,18 @@ Até agora, foram concluídas estas etapas:
 39. Os registros de treino, passos, água e alimentação passaram a persistir no banco D1 (antes apenas exibiam a confirmação).
 40. O cliente Angular foi adicionado, consumindo o endpoint `POST /api/chat`.
 41. O Worker foi publicado em `https://whatsapp-fitness-agent.andreluiscelis.workers.dev`.
+42. Foi implementada a autenticação do cliente web: `POST /api/auth/registro` e `POST /api/auth/login` com emissão de JWT HS256 de 24h de validade. O cadastro evoluiu para **nome, e-mail único e senha** (hash PBKDF2 + salt, migração `0004`); e-mail duplicado responde `409` com "E-mail já cadastrado. Faça login.".
+43. O endpoint `/api/chat` passou a exigir `Authorization: Bearer <token>`; o `userId` vem do token, nunca do corpo da requisição.
+44. Foi implementado o rate limiting por usuário (12 mensagens/minuto, 300/dia) com contadores no D1, respondendo `429` ao exceder.
+45. Foi implementado o orçamento diário de IA (60 chamadas/usuário) com degradação para regras locais, além de timeout de 15s na chamada do Workers AI.
+46. A tela de login/registro do Angular foi adicionada, com sessão persistente em `localStorage`, botão Sair e tratamento de sessão expirada (401) e limite atingido (429).
+47. A migração `0003_add_auth_and_limits.sql` (tabelas `usuarios` e `contadores`) foi aplicada nos ambientes local e remoto, e o segredo `AUTH_SECRET` foi configurado em produção.
 
 ## Capítulo 9 — O que ainda não foi feito
 
 Os seguintes itens ainda estão pendentes:
 
-- validação de autenticação e assinatura dos webhooks;
+- validação da assinatura (X-Hub-Signature) dos webhooks do WhatsApp — a autenticação do cliente web já está implementada;
 - definição dos tipos das mensagens recebidas e enviadas pelo WhatsApp;
 - suporte a outros tipos de mensagem além de texto;
 - validação dos nomes das variáveis de ambiente usados pelo código e pelos tipos;
@@ -893,7 +943,7 @@ O perfil `worker-startup.cpuprofile`, gerado pelo comando `wrangler check startu
 
 O teste confirma que o Worker consegue receber o evento e percorrer o handler. Para confirmar o envio pela Meta Graph API, ainda são necessárias credenciais válidas e variáveis `WHATSAPP_*` configuradas.
 
-O Worker está publicado em `https://whatsapp-fitness-agent.andreluiscelis.workers.dev`. A versão que inclui as regras locais de água, passos, alimentação e exercícios é `2e56a102-ba55-4717-9423-5f0841993f5c`.
+O Worker está publicado em `https://whatsapp-fitness-agent.andreluiscelis.workers.dev`. A versão atual (`6a5442fb-4ddf-4cce-a2d2-807f7ebe1aac`) inclui as regras locais de água, passos, alimentação e exercícios, as sugestões clicáveis e a autenticação do cliente web com rate limiting e orçamento de IA.
 
 ### Como testar com Postman
 
@@ -1006,6 +1056,20 @@ Depois de registrar alguns dados, pergunte ao agente:
 
 Essas mensagens são reconhecidas por `identificarConsultaLocal` e respondidas consultando o D1 diretamente, sem acionar o Workers AI. Nos logs do agente, aparece a mensagem `Consulta respondida por regras locais: <TIPO>`.
 
+#### Passo 4c: testar a API web autenticada
+
+O `/api/chat` usado pelo cliente Angular exige autenticação. Para testá-lo, primeiro crie uma conta e faça login:
+
+1. `POST http://127.0.0.1:8787/api/auth/registro` com o corpo `{"nome": "Andre", "email": "andre@example.com", "senha": "segredo123"}` → status `201` com `{"token": "eyJ...", "usuario": {"id", "nome", "email"}, "expiraEm": ...}`. Se o e-mail já estiver cadastrado, o status será `409` com "E-mail já cadastrado. Faça login."
+2. `POST http://127.0.0.1:8787/api/auth/login` com `{"email": "andre@example.com", "senha": "segredo123"}` → status `200` com o mesmo formato de resposta. Copie o token.
+3. `POST http://127.0.0.1:8787/api/chat` com o corpo `{"mensagem": "bebi 300 ml de agua"}` e o header `Authorization` com valor `Bearer eyJ...` (o token do passo anterior) → status `200` com a confirmação do registro.
+
+Comportamentos esperados das proteções:
+
+- sem o header `Authorization`, ou com token inválido/expirado → status `401`;
+- mais de 12 mensagens em um mesmo minuto (ou 300 no dia) → status `429`;
+- enviar `userId` no corpo do `/api/chat` não tem mais efeito: o usuário vem do token.
+
 #### Passo 5: testar a validação do webhook
 
 Crie uma segunda requisição no Postman:
@@ -1013,10 +1077,11 @@ Crie uma segunda requisição no Postman:
 - método: `GET`;
 - URL: `http://127.0.0.1:8787/webhook?hub.mode=subscribe&hub.verify_token=teste&hub.challenge=abc123`.
 
-Sem configurar `WHATSAPP_VERIFY_TOKEN`, o resultado esperado é status `403` com a mensagem `Token de verificação inválido`. Para testar o cenário de sucesso, crie um arquivo `.dev.vars` na raiz do projeto:
+Sem configurar `WHATSAPP_VERIFY_TOKEN`, o resultado esperado é status `403` com a mensagem `Token de verificação inválido`. Para testar os cenários de sucesso, crie um arquivo `.dev.vars` na raiz do projeto:
 
 ```env
 WHATSAPP_VERIFY_TOKEN=teste
+AUTH_SECRET=um-segredo-qualquer-para-o-local
 ```
 
 Reinicie o Worker e envie a mesma requisição. O resultado esperado será status `200` e o corpo `abc123`.

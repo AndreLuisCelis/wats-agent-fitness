@@ -12,4 +12,17 @@ h1, p { margin: 0; } h1 { font-size: 1.05rem; } .cabecalho p { margin-top: 3px; 
 .sugestoes { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 18px 12px; background: #f8faf9; }.sugestoes button { border: 1px solid #bbf7d0; border-radius: 999px; padding: 8px 12px; color: #166534; background: #fff; cursor: pointer; }
 .sugestoes-msg { display: flex; gap: 8px; flex-wrap: wrap; align-self: flex-start; max-width: 85%; margin: -6px 0 10px; } .sugestoes-msg button { border: 1px solid #bbf7d0; border-radius: 999px; padding: 7px 12px; color: #166534; background: #fff; cursor: pointer; font-size: .85rem; } .sugestoes-msg button:hover { background: #f0fdf4; } .sugestoes-msg button:disabled { opacity: .5; cursor: not-allowed; }
 .entrada { display: flex; gap: 10px; padding: 16px 18px; border-top: 1px solid #e5e7eb; }.entrada textarea { flex: 1; resize: none; padding: 10px; font: inherit; border: 1px solid #cbd5d1; border-radius: 12px; }.entrada button { padding: 0 18px; border: 0; border-radius: 12px; color: #fff; background: #15803d; font-weight: 700; cursor: pointer; }.entrada button:disabled { opacity: .45; cursor: not-allowed; }.aviso { padding: 0 18px 14px; color: #6b7280; font-size: .72rem; text-align: center; }
-.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); } @keyframes pulse { to { opacity: .25; transform: translateY(-2px); } } @media (max-width: 560px) { .pagina { padding: 0; } .chat { height: 100dvh; border-radius: 0; } .status { display: none; } }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+.autenticacao { justify-content: center; padding: 28px; }
+.auth-form { display: flex; flex-direction: column; gap: 8px; max-width: 340px; width: 100%; margin: 0 auto; }
+.auth-form label { font-size: .8rem; font-weight: 700; color: #374151; }
+.auth-form input { padding: 11px 12px; font: inherit; border: 1px solid #cbd5d1; border-radius: 12px; }
+.auth-form input:focus { outline: 2px solid #86efac; border-color: #15803d; }
+.auth-form button { margin-top: 10px; padding: 12px; border: 0; border-radius: 12px; color: #fff; background: #15803d; font-weight: 700; cursor: pointer; }
+.auth-form button:disabled { opacity: .45; cursor: not-allowed; }
+.alternancia { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 12px; padding: 4px; border-radius: 12px; background: #eef2f0; }
+.alternancia button { padding: 8px; border: 0; border-radius: 9px; background: transparent; color: #4b5563; font-weight: 600; cursor: pointer; }
+.alternancia button.ativo { background: #fff; color: #14532d; box-shadow: 0 1px 4px #17382814; }
+.erro-auth { margin: 4px 0 0; color: #b91c1c; font-size: .8rem; }
+.sair { margin-left: 10px; padding: 7px 12px; border: 1px solid #d1fae5; border-radius: 999px; background: transparent; color: #d1fae5; font-size: .75rem; cursor: pointer; }
+.sair:hover { background: #166534; } @keyframes pulse { to { opacity: .25; transform: translateY(-2px); } } @media (max-width: 560px) { .pagina { padding: 0; } .chat { height: 100dvh; border-radius: 0; } .status { display: none; } }

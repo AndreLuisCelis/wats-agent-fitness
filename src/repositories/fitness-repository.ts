@@ -138,4 +138,78 @@ export class FitnessRepository {
 
     return resultado.results;
   }
+
+  /** Cria um usuário do cliente web (id único, e-mail único, senha já com hash e salt). */
+  public async criarUsuario(usuario: {
+    id: string;
+    nome: string;
+    email: string;
+    senhaHash: string;
+    salt: string;
+  }): Promise<void> {
+    if (!this.db) throw new Error('Banco de dados indisponível.');
+
+    await this.db.prepare(`
+      INSERT INTO usuarios (id, nome, email, senha_hash, salt, criado_em)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).bind(
+      usuario.id,
+      usuario.nome,
+      usuario.email.toLowerCase(),
+      usuario.senhaHash,
+      usuario.salt,
+      new Date().toISOString()
+    ).run();
+  }
+
+  /** Busca o usuário pelo e-mail (case-insensitive) com credenciais para autenticação. */
+  public async buscarUsuarioPorEmail(email: string): Promise<{
+    id: string;
+    nome: string;
+    email: string;
+    senhaHash: string;
+    salt: string;
+  } | null> {
+    if (!this.db) return null;
+
+    return await this.db.prepare(`
+      SELECT id, nome, email, senha_hash AS senhaHash, salt
+      FROM usuarios
+      WHERE email = ?
+    `).bind(email.trim().toLowerCase()).first<{
+      id: string;
+      nome: string;
+      email: string;
+      senhaHash: string;
+      salt: string;
+    }>();
+  }
+
+  /** Incrementa (upsert) um contador da tabela `contadores` e retorna o valor atual. */
+  public async incrementarContador(chave: string, janela: string): Promise<number> {
+    if (!this.db) return 0;
+
+    const agora = new Date().toISOString();
+    await this.db.prepare(`
+      INSERT INTO contadores (chave, janela, contador, atualizado_em)
+      VALUES (?, ?, 1, ?)
+      ON CONFLICT(chave, janela)
+      DO UPDATE SET contador = contador + 1, atualizado_em = excluded.atualizado_em
+    `).bind(chave, janela, agora).run();
+
+    const resultado = await this.db.prepare(`
+      SELECT contador FROM contadores WHERE chave = ? AND janela = ?
+    `).bind(chave, janela).first<{ contador: number }>();
+
+    return resultado?.contador ?? 0;
+  }
+
+  /** Remove buckets de contadores não atualizados há mais de 2 dias. */
+  public async limparContadoresAntigos(): Promise<void> {
+    if (!this.db) return;
+
+    await this.db.prepare(`
+      DELETE FROM contadores WHERE atualizado_em < datetime('now', '-2 days')
+    `).run();
+  }
 }

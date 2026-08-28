@@ -40,3 +40,6 @@ desktop.ini
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
+
+# Variaveis locais do wrangler dev (segredos)
+.dev.vars
