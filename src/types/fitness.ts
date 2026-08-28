@@ -60,6 +60,7 @@ export interface Env {
   AI: any;
   DB?: D1Database;
   FRONTEND_ORIGIN?: string;
+  FRONTEND_ORIGINS?: string;
   /** Segredo HMAC para assinar/validar os JWT do cliente web. */
   AUTH_SECRET?: string;
   /** Limites opcionais (padrões em src/limites.ts). */

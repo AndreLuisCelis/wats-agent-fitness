@@ -3,6 +3,9 @@
 	"name": "whatsapp-fitness-agent",
 	"main": "src/index.ts",
 	"compatibility_date": "2026-08-25",
+	"vars": {
+		"FRONTEND_ORIGINS": "https://wats-agent-fitness-bzprztz16-andreiluiscelis-projects.vercel.app,https://wats-agent-fitness.vercel.app,http://localhost:4200"
+	},
 	"ai": {
 		"binding": "AI"
 	},

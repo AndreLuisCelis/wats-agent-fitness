@@ -109,21 +109,32 @@ function mensagemDeLimite(motivo: 'MINUTO' | 'DIA'): string {
     : 'Você atingiu o limite diário de mensagens. Volte amanhã! 🌙';
 }
 
-function corsHeaders(env: Env): HeadersInit {
+function corsHeaders(request: Request, env: Env): HeadersInit {
+  const origensPermitidas = [
+    ...(env.FRONTEND_ORIGINS?.split(',') ?? []),
+    env.FRONTEND_ORIGIN ?? ''
+  ].map((origem) => origem.trim()).filter(Boolean);
+  const origemDaRequisicao = request.headers.get('Origin');
+  const origemPermitida = origemDaRequisicao && origensPermitidas.includes(origemDaRequisicao)
+    ? origemDaRequisicao
+    : origemDaRequisicao
+      ? undefined
+      : origensPermitidas[0] || '*';
+
   return {
-    'Access-Control-Allow-Origin': env.FRONTEND_ORIGIN || '*',
+    ...(origemPermitida ? { 'Access-Control-Allow-Origin': origemPermitida } : {}),
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Vary': 'Origin'
   };
 }
 
-function respostaJson(dados: unknown, status: number, env: Env): Response {
+function respostaJson(dados: unknown, status: number, request: Request, env: Env): Response {
   return new Response(JSON.stringify(dados), {
     status,
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
-      ...corsHeaders(env)
+      ...corsHeaders(request, env)
     }
   });
 }
@@ -131,26 +142,26 @@ function respostaJson(dados: unknown, status: number, env: Env): Response {
 /** Endpoint independente do WhatsApp para o cliente web. */
 async function processarChatWeb(request: Request, env: Env): Promise<Response> {
   if (request.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: corsHeaders(env) });
+    return new Response(null, { status: 204, headers: corsHeaders(request, env) });
   }
 
   if (request.method !== 'POST') {
-    return respostaJson({ erro: 'Método não permitido' }, 405, env);
+    return respostaJson({ erro: 'Método não permitido' }, 405, request, env);
   }
 
   if (!env.AUTH_SECRET) {
-    return respostaJson({ erro: 'Servidor sem AUTH_SECRET configurado.' }, 500, env);
+    return respostaJson({ erro: 'Servidor sem AUTH_SECRET configurado.' }, 500, request, env);
   }
 
   // Autenticação obrigatória: o userId vem SEMPRE do token, nunca do corpo.
   const token = extrairTokenAutorizacao(request);
   if (!token) {
-    return respostaJson({ erro: 'Autenticação necessária. Faça login para conversar.' }, 401, env);
+    return respostaJson({ erro: 'Autenticação necessária. Faça login para conversar.' }, 401, request, env);
   }
 
   const userId = await verificarToken(token, env.AUTH_SECRET);
   if (!userId) {
-    return respostaJson({ erro: 'Sessão expirada ou inválida. Faça login novamente.' }, 401, env);
+    return respostaJson({ erro: 'Sessão expirada ou inválida. Faça login novamente.' }, 401, request, env);
   }
 
   try {
@@ -158,36 +169,36 @@ async function processarChatWeb(request: Request, env: Env): Promise<Response> {
     const mensagem = typeof body.mensagem === 'string' ? body.mensagem.trim() : '';
 
     if (!mensagem || mensagem.length > 2_000) {
-      return respostaJson({ erro: 'Informe uma mensagem de até 2.000 caracteres.' }, 400, env);
+      return respostaJson({ erro: 'Informe uma mensagem de até 2.000 caracteres.' }, 400, request, env);
     }
 
     // Rate limiting por usuário (por minuto e por dia).
     const limite = await verificarLimitesChat(env, userId);
     if (!limite.permitido) {
-      return respostaJson({ erro: mensagemDeLimite(limite.motivo ?? 'MINUTO') }, 429, env);
+      return respostaJson({ erro: mensagemDeLimite(limite.motivo ?? 'MINUTO') }, 429, request, env);
     }
 
     const agent = new FitnessAgent(env, 'FitBot Pro', { userId, usarIA: env.USAR_IA !== false });
     const { resposta, sugestoes } = await agent.processarMensagem(userId, mensagem);
-    return respostaJson({ resposta, sugestoes }, 200, env);
+    return respostaJson({ resposta, sugestoes }, 200, request, env);
   } catch (error) {
     console.error('[Chat Web Error]:', error);
-    return respostaJson({ erro: 'Não foi possível processar sua mensagem.' }, 500, env);
+    return respostaJson({ erro: 'Não foi possível processar sua mensagem.' }, 500, request, env);
   }
 }
 
 /** POST /api/auth/registro — cria usuário (nome, e-mail único e senha) e já devolve o token. */
 async function processarRegistro(request: Request, env: Env): Promise<Response> {
   if (request.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: corsHeaders(env) });
+    return new Response(null, { status: 204, headers: corsHeaders(request, env) });
   }
 
   if (request.method !== 'POST') {
-    return respostaJson({ erro: 'Método não permitido' }, 405, env);
+    return respostaJson({ erro: 'Método não permitido' }, 405, request, env);
   }
 
   if (!env.AUTH_SECRET) {
-    return respostaJson({ erro: 'Servidor sem AUTH_SECRET configurado.' }, 500, env);
+    return respostaJson({ erro: 'Servidor sem AUTH_SECRET configurado.' }, 500, request, env);
   }
 
   try {
@@ -197,19 +208,19 @@ async function processarRegistro(request: Request, env: Env): Promise<Response> 
     const senha = typeof body.senha === 'string' ? body.senha : '';
 
     if (!validarNome(nome)) {
-      return respostaJson({ erro: 'Informe seu nome (2 a 60 caracteres).' }, 400, env);
+      return respostaJson({ erro: 'Informe seu nome (2 a 60 caracteres).' }, 400, request, env);
     }
     if (!validarEmail(email)) {
-      return respostaJson({ erro: 'Informe um e-mail válido.' }, 400, env);
+      return respostaJson({ erro: 'Informe um e-mail válido.' }, 400, request, env);
     }
     if (!validarSenha(senha)) {
-      return respostaJson({ erro: 'A senha deve ter de 6 a 72 caracteres.' }, 400, env);
+      return respostaJson({ erro: 'A senha deve ter de 6 a 72 caracteres.' }, 400, request, env);
     }
 
     const repository = new FitnessRepository(env.DB);
 
     if (await repository.buscarUsuarioPorEmail(email)) {
-      return respostaJson({ erro: 'E-mail já cadastrado. Faça login.' }, 409, env);
+      return respostaJson({ erro: 'E-mail já cadastrado. Faça login.' }, 409, request, env);
     }
 
     const salt = gerarSalt();
@@ -227,7 +238,7 @@ async function processarRegistro(request: Request, env: Env): Promise<Response> 
     } catch (erroBanco) {
       // Rede de segurança caso dois registros disputem o mesmo e-mail simultaneamente.
       if (erroBanco instanceof Error && erroBanco.message.includes('UNIQUE constraint failed')) {
-        return respostaJson({ erro: 'E-mail já cadastrado. Faça login.' }, 409, env);
+        return respostaJson({ erro: 'E-mail já cadastrado. Faça login.' }, 409, request, env);
       }
       throw erroBanco;
     }
@@ -240,26 +251,27 @@ async function processarRegistro(request: Request, env: Env): Promise<Response> 
         expiraEm: Date.now() + VALIDADE_TOKEN_SEGUNDOS * 1000
       },
       201,
+      request,
       env
     );
   } catch (error) {
     console.error('[Registro Error]:', error);
-    return respostaJson({ erro: 'Não foi possível criar a conta.' }, 500, env);
+    return respostaJson({ erro: 'Não foi possível criar a conta.' }, 500, request, env);
   }
 }
 
 /** POST /api/auth/login — valida e-mail/senha e emite JWT assinado (24h). */
 async function processarLogin(request: Request, env: Env): Promise<Response> {
   if (request.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: corsHeaders(env) });
+    return new Response(null, { status: 204, headers: corsHeaders(request, env) });
   }
 
   if (request.method !== 'POST') {
-    return respostaJson({ erro: 'Método não permitido' }, 405, env);
+    return respostaJson({ erro: 'Método não permitido' }, 405, request, env);
   }
 
   if (!env.AUTH_SECRET) {
-    return respostaJson({ erro: 'Servidor sem AUTH_SECRET configurado.' }, 500, env);
+    return respostaJson({ erro: 'Servidor sem AUTH_SECRET configurado.' }, 500, request, env);
   }
 
   try {
@@ -268,18 +280,18 @@ async function processarLogin(request: Request, env: Env): Promise<Response> {
     const senha = typeof body.senha === 'string' ? body.senha : '';
 
     if (!email || !senha) {
-      return respostaJson({ erro: 'Informe e-mail e senha.' }, 400, env);
+      return respostaJson({ erro: 'Informe e-mail e senha.' }, 400, request, env);
     }
 
     const repository = new FitnessRepository(env.DB);
     const usuario = await repository.buscarUsuarioPorEmail(email);
     if (!usuario) {
-      return respostaJson({ erro: 'E-mail ou senha inválido.' }, 401, env);
+      return respostaJson({ erro: 'E-mail ou senha inválido.' }, 401, request, env);
     }
 
     const senhaHash = await calcularHashSenha(senha, usuario.salt);
     if (senhaHash !== usuario.senhaHash) {
-      return respostaJson({ erro: 'E-mail ou senha inválido.' }, 401, env);
+      return respostaJson({ erro: 'E-mail ou senha inválido.' }, 401, request, env);
     }
 
     const token = await criarToken(usuario.id, env.AUTH_SECRET, VALIDADE_TOKEN_SEGUNDOS);
@@ -290,11 +302,12 @@ async function processarLogin(request: Request, env: Env): Promise<Response> {
         expiraEm: Date.now() + VALIDADE_TOKEN_SEGUNDOS * 1000
       },
       200,
+      request,
       env
     );
   } catch (error) {
     console.error('[Login Error]:', error);
-    return respostaJson({ erro: 'Não foi possível entrar. Tente novamente.' }, 500, env);
+    return respostaJson({ erro: 'Não foi possível entrar. Tente novamente.' }, 500, request, env);
   }
 }
 
