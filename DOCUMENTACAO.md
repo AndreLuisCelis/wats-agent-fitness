@@ -342,7 +342,7 @@ Este é o ponto de entrada da lógica do agente. Ele recebe:
 - `userId`: identificação do usuário;
 - `mensagemTexto`: texto enviado pelo usuário.
 
-Antes de chamar a IA, o método tenta responder por **regras locais**. Se a frase for uma consulta reconhecida, a resposta vem direto do D1:
+Antes de chamar a IA, o método tenta responder por **regras locais**. Primeiro verifica se a frase é uma consulta reconhecida (resposta direto do D1, sem custo). Se não for, verifica se é um **registro estruturado claro** (também gravado direto no D1, sem IA). Só o que sobra segue para a IA:
 
 ```text
 mensagemTexto
@@ -352,6 +352,12 @@ identificarConsultaLocal
   |
   +--> consulta reconhecida -> resposta direta do D1
   |                            (água, passos, alimentação, exercícios, hoje, geral)
+  |
+  v
+interpretarRegistroLocal
+  |
+  +--> registro estruturado claro -> grava direto no D1, sem IA
+  |      (ex.: "bebi 500 ml", "dei 6 mil passos", "comi 2 bananas", "fiz 30 min de corrida")
   |
   v
 interpretarComWorkersAI
@@ -375,7 +381,7 @@ intencaoIdentificada
 mensagem de orientação se faltarem dados
 ```
 
-O método registra no console o nome do agente, o usuário e a mensagem recebida. Quando uma consulta é respondida por regras locais, o log exibe `Consulta respondida por regras locais: <TIPO>`.
+O método registra no console o nome do agente, o usuário e a mensagem recebida. Quando uma consulta é respondida por regras locais, o log exibe `Consulta respondida por regras locais: <TIPO>`; quando é um registro, exibe `Registro identificado por regras locais: <INTENCAO>`. As regras locais de registro **não consomem orçamento do Workers AI**.
 
 ### A interpretação com Workers AI
 
@@ -402,7 +408,9 @@ Essa etapa transforma linguagem natural, como “fiz 45 minutos de spinning”, 
 
 Se a chamada à IA falhar ou retornar um JSON inválido, o agente não encerra a conversa imediatamente. Ele registra o erro e usa `fallbackHeuristico`.
 
-Essa regra simples procura palavras conhecidas:
+Antes de qualquer regra própria, o fallback **tenta o `interpretarRegistroLocal`**: se a mensagem for um registro estruturado claro (água, passos, alimento ou treino), ele é gravado normalmente — ou seja, mesmo com a IA fora do ar, registrar "fiz 30 min de corrida" funciona.
+
+Só se o registro local não casar, o fallback procura palavras conhecidas:
 
 - `registro`, `histórico`, `historico` ou `treinos` levam a uma consulta de registros;
 - `passo`, `caminhei` ou `caminhada` levam a um registro de passos;
@@ -481,9 +489,33 @@ O método `identificarConsultaLocal` é a primeira etapa do `processarMensagem`.
 - `HOJE` (ex.: `o que registrei hoje`) → `consultarRegistros(apenasHoje = true)`;
 - `GERAL` (ex.: `meus registros`, `meu histórico`) → `consultarRegistros`.
 
-Uma proteção importante: mensagens com intenção de ação (`quero registrar`, `vou comer`, `preciso anotar` etc.) **nunca** são capturadas pelas regras locais — elas seguem para o Workers AI para serem registradas corretamente. O mesmo vale para mensagens que trazem dados para registrar (número + unidade), como `dei 8000 passos`, `bebi 200 ml` ou `fiz 30 min de corrida` — essas sempre passam pela IA para gravar o registro.
+Uma proteção importante: mensagens com intenção de ação (`quero registrar`, `vou comer`, `preciso anotar` etc.) **nunca** são capturadas pelas regras locais de **consulta** — elas seguem para o agente como registro. O mesmo vale para mensagens que trazem dados para registrar (número + unidade): `dei 8000 passos`, `bebi 200 ml` ou `fiz 30 min de corrida` agora são **capturadas pelo `interpretarRegistroLocal`** (ver seção abaixo) e gravadas direto no D1, sem IA.
 
 As confirmações de registro (água, passos, treino e alimentação) mostram o **total acumulado do dia** após o registro, evitando valores incoerentes como "faltam 1800 ml" quando já foram consumidos mais de 1.500 ml.
+
+### Registros identificados por regras locais
+
+O método privado `interpretarRegistroLocal` roda logo depois das consultas e **antes** do Workers AI. Ele normaliza o texto (remove acentos) e reconhece registros estruturados comuns, gravando direto no D1 — sem chamar a IA e **sem consumir o orçamento diário** (`LIMITE_IA_DIA`). Também é a primeira tentativa dentro do `fallbackHeuristico`, então continua funcionando quando a IA está indisponível ou lenta.
+
+Padrões reconhecidos:
+
+| Intenção | Exemplos | Detalhes |
+| --- | --- | --- |
+| `REGISTRAR_AGUA` | `bebi 500 ml`, `tomei 2 litros` | aceita `ml`, `mililitros`, `l`, `litros`; litros são convertidos (`1 l` = 1000 ml) |
+| `REGISTRAR_PASSOS` | `dei 8 mil passos`, `andei 6000 passos` | `mil` (ou `mil`) multiplica por 1000 |
+| `REGISTRAR_ALIMENTO` | `comi 2 bananas`, `almocei 1 bife` | extrai quantidade e o nome do alimento; sem quantidade assume 1 |
+| `REGISTRAR_TREINO` | `fiz 30 min de corrida`, `treinei 1 hora de musculação`, `corri 5 km` | duração em `min`/`hora` (converte para minutos), ou distância em `km` (multiplica por 10 para estimar minutos) |
+
+Detecção da modalidade no treino:
+
+- `corrid`/`corri`/`correr` → `RUNNING`;
+- `caminh` → `WALKING`;
+- `spinning`/`pedal`/`biciclet`/`bike`/`ciclism` → `SPINNING`;
+- `muscula`/`pesos`/`academia`/`halter`/`levantament` → `WEIGHTLIFTING`;
+- `calistenia`/`alonga`/`flexion` → `CALISTHENICS`;
+- sem correspondência → `OTHER`.
+
+Quando a IA vem antes no fluxo (mensagem ambígua ou incompleta), os mesmos padrões servem de reserva no fallback — o registro de "fiz 30 min de corrida", por exemplo, **nunca** depende da IA para acontecer.
 
 ### Autenticação do cliente web e proteção do userId
 
@@ -763,6 +795,7 @@ Até agora, foram concluídas estas etapas:
 45. Foi implementado o orçamento diário de IA (60 chamadas/usuário) com degradação para regras locais, além de timeout de 15s na chamada do Workers AI.
 46. A tela de login/registro do Angular foi adicionada, com sessão persistente em `localStorage`, botão Sair e tratamento de sessão expirada (401) e limite atingido (429).
 47. A migração `0003_add_auth_and_limits.sql` (tabelas `usuarios` e `contadores`) foi aplicada nos ambientes local e remoto, e o segredo `AUTH_SECRET` foi configurado em produção.
+48. Registros comuns passaram a ser identificados por regras locais (`interpretarRegistroLocal`), antes da IA e também no fallback heurístico: água, passos, alimentação e treinos (com detecção de modalidade e conversão de litros/km/minutos). Assim, "fiz 30 min de corrida" é gravado mesmo com o Workers AI fora do ar e sem consumir o orçamento diário de IA.
 
 ## Capítulo 9 — O que ainda não foi feito
 
@@ -943,7 +976,7 @@ O perfil `worker-startup.cpuprofile`, gerado pelo comando `wrangler check startu
 
 O teste confirma que o Worker consegue receber o evento e percorrer o handler. Para confirmar o envio pela Meta Graph API, ainda são necessárias credenciais válidas e variáveis `WHATSAPP_*` configuradas.
 
-O Worker está publicado em `https://whatsapp-fitness-agent.andreluiscelis.workers.dev`. A versão atual (`6a5442fb-4ddf-4cce-a2d2-807f7ebe1aac`) inclui as regras locais de água, passos, alimentação e exercícios, as sugestões clicáveis e a autenticação do cliente web com rate limiting e orçamento de IA.
+O Worker está publicado em `https://whatsapp-fitness-agent.andreluiscelis.workers.dev`. A versão atual (`9e44ced6-805e-43e8-8cee-064eed056fe9`) inclui as regras locais de consulta (água, passos, alimentação, exercícios, hoje, geral) e de **registro** (`interpretarRegistroLocal`, com fallback quando a IA falha), as sugestões clicáveis, a autenticação do cliente web com rate limiting e o orçamento de IA.
 
 ### Como testar com Postman
 

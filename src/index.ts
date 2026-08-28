@@ -167,7 +167,7 @@ async function processarChatWeb(request: Request, env: Env): Promise<Response> {
       return respostaJson({ erro: mensagemDeLimite(limite.motivo ?? 'MINUTO') }, 429, env);
     }
 
-    const agent = new FitnessAgent(env, 'FitBot Pro', { userId, usarIA: true });
+    const agent = new FitnessAgent(env, 'FitBot Pro', { userId, usarIA: env.USAR_IA !== false });
     const { resposta, sugestoes } = await agent.processarMensagem(userId, mensagem);
     return respostaJson({ resposta, sugestoes }, 200, env);
   } catch (error) {

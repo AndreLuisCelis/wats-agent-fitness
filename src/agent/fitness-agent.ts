@@ -40,8 +40,20 @@ export class FitnessAgent {
       return { resposta: await this.consultarRegistros(userId) };
     }
 
-    const analise = await this.interpretarComWorkersAI(mensagemTexto);
+    // Regras locais de registro: mensagens estruturadas comuns são gravadas
+    // direto no D1, sem depender (ou consumir orçamento) do Workers AI.
+    const registroLocal = this.interpretarRegistroLocal(mensagemTexto);
+    if (registroLocal) {
+      console.log(`[${this.agentName}] Registro identificado por regras locais: ${registroLocal.intencaoIdentificada}.`);
+      return this.executarAnalise(userId, registroLocal);
+    }
 
+    const analise = await this.interpretarComWorkersAI(mensagemTexto);
+    return this.executarAnalise(userId, analise);
+  }
+
+  /** Aplica a intenção analisada aos handlers de registro/consulta. */
+  private async executarAnalise(userId: string, analise: AnaliseIntencaoIA): Promise<RespostaAgente> {
     switch (analise.intencaoIdentificada) {
       case 'REGISTRAR_TREINO':
         if (analise.dadosTreino) {
@@ -113,6 +125,87 @@ export class FitnessAgent {
       'O que comi hoje?',
       'Meus registros'
     ];
+  }
+
+  /**
+   * Reconhece registros estruturados comuns (água, passos, alimentação e treino)
+   * por regras de texto — sem chamar o Workers AI. Retorna null quando não há
+   * um registro claro na mensagem, deixando a decisão para a IA.
+   */
+  private interpretarRegistroLocal(texto: string): AnaliseIntencaoIA | null {
+    const consulta = texto.toLowerCase()
+      .replace(/[áàâãä]/g, 'a')
+      .replace(/[éèêë]/g, 'e')
+      .replace(/[íìîï]/g, 'i')
+      .replace(/[óòôõö]/g, 'o')
+      .replace(/[úùûü]/g, 'u')
+      .replace(/ç/g, 'c');
+
+    // Água: "bebi 500 ml de água", "tomei 2 litros de água"
+    if (/\b(bebi|tomei)\b/.test(consulta)) {
+      const medida = consulta.match(/(\d+(?:[.,]\d+)?)\s*(ml|mililitros?|l\b|litros?)/);
+      if (medida) {
+        const valor = Number(medida[1].replace(',', '.'));
+        const quantidadeMl = Math.round(/^l/.test(medida[2]) ? valor * 1000 : valor);
+        if (quantidadeMl > 0) {
+          return { intencaoIdentificada: 'REGISTRAR_AGUA', dadosAgua: { quantidadeMl }, respostaTextual: 'Hidratação registrada!' };
+        }
+      }
+    }
+
+    // Passos: "dei 8 mil passos", "andei 6000 passos"
+    if (/\bpassos?\b/.test(consulta)) {
+      const medida = consulta.match(/(\d+(?:[.,]\d+)?)\s*(mil\s*)?passos?/);
+      if (medida) {
+        const base = Number(medida[1].replace(/\./g, '').replace(',', '.'));
+        const quantidade = Math.round(medida[2] ? base * 1000 : base);
+        if (quantidade > 0) {
+          return { intencaoIdentificada: 'REGISTRAR_PASSOS', dadosPassos: { quantidade }, respostaTextual: 'Passos registrados!' };
+        }
+      }
+    }
+
+    // Alimentação: "comi 2 bananas", "comer 1 pão"
+    if (/\b(comi|comemos|comer|almocei|jantei|lanchei)\b/.test(consulta)) {
+      const numero = consulta.match(/(\d+(?:[.,]\d+)?)/);
+      const quantidade = numero ? Number(numero[1].replace(',', '.')) : 1;
+      let alimentoTexto = texto
+        .replace(/\b(?:comi|comemos|comer|almocei|jantei|lanchei|alimento|alimentação|alimentacao|refeição|refeicao|lanche)\b/gi, '')
+        .replace(/(\d+(?:[.,]\d+)?)/g, '')
+        .replace(/[.,;:!?]/g, '')
+        .trim();
+      if (!alimentoTexto) alimentoTexto = 'alimento';
+      return { intencaoIdentificada: 'REGISTRAR_ALIMENTO', dadosAlimento: { alimento: alimentoTexto, quantidade }, respostaTextual: 'Alimentação registrada!' };
+    }
+
+    // Treino: "fiz 30 min de corrida", "treinei 1 hora de musculação", "corri 5 km"
+    const verboDeRegistro = /\b(fiz|treinei|corri|caminhei|pedalei|nadei|malhei|completei)\b/.test(consulta);
+    if (verboDeRegistro) {
+      const duracao = consulta.match(/(\d+(?:[.,]\d+)?)\s*(min(?:uto)?s?|h(?:ora)?s?)/);
+      const distancia = consulta.match(/(\d+(?:[.,]\d+)?)\s*km\b/);
+
+      if (duracao || distancia) {
+        let duracaoMinutos = 40;
+        if (duracao) {
+          const valor = Number(duracao[1].replace(',', '.'));
+          duracaoMinutos = Math.round(/^h/.test(duracao[2]) ? valor * 60 : valor);
+        } else if (distancia) {
+          const km = Number(distancia[1].replace(',', '.'));
+          duracaoMinutos = Math.round(km * 10);
+        }
+
+        let tipo: TipoTreino = 'OTHER';
+        if (/corrid|corri|correr/.test(consulta)) tipo = 'RUNNING';
+        else if (/caminh/.test(consulta)) tipo = 'WALKING';
+        else if (/spinning|pedal|biciclet|bike|ciclism/.test(consulta)) tipo = 'SPINNING';
+        else if (/muscula|pesos?\b|academia|halter|levantament/.test(consulta)) tipo = 'WEIGHTLIFTING';
+        else if (/calistenia|alonga|flexion/.test(consulta)) tipo = 'CALISTHENICS';
+
+        return { intencaoIdentificada: 'REGISTRAR_TREINO', dadosTreino: { tipo, duracaoMinutos }, respostaTextual: 'Treino registrado!' };
+      }
+    }
+
+    return null;
   }
 
   private identificarConsultaLocal(texto: string): 'HOJE' | 'AGUA' | 'PASSOS' | 'ALIMENTACAO' | 'EXERCICIOS' | 'GERAL' | null {
@@ -295,6 +388,11 @@ Retorne APENAS um objeto JSON com o seguinte formato:
   }
 
   private fallbackHeuristico(texto: string): AnaliseIntencaoIA {
+    // Antes de tudo, tenta as regras locais de registro (cobrem os casos comuns
+    // mesmo quando a IA está indisponível).
+    const registroLocal = this.interpretarRegistroLocal(texto);
+    if (registroLocal) return registroLocal;
+
     const t = texto.toLowerCase();
 
     if (t.includes('registro') || t.includes('histórico') || t.includes('historico') || t.includes('treinos')) {

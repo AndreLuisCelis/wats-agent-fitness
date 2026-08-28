@@ -66,6 +66,8 @@ export interface Env {
   LIMITE_MSGS_MINUTO?: number;
   LIMITE_MSGS_DIA?: number;
   LIMITE_IA_DIA?: number;
+  /** Quando falso, o agente não chama o Workers AI (apenas regras locais). */
+  USAR_IA?: boolean;
   WHATSAPP_VERIFY_TOKEN: string;
   WHATSAPP_PHONE_NUMBER_ID: string;
   WHATSAPP_API_TOKEN: string;
