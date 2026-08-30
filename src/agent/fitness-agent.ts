@@ -641,7 +641,7 @@ Retorne APENAS um objeto JSON com o seguinte formato:
     const barra = '▓'.repeat(Math.floor(pct / 10)) + '░'.repeat(10 - Math.floor(pct / 10));
     const faltam = Math.max(meta - totalHoje, 0);
 
-    return `🏽 **Passos do Dia Registrados!**\n` +
+    return `🖐🏽 **Passos do Dia Registrados!**\n` +
       `• **Registrado agora:** +${quantidade.toLocaleString('pt-BR')} passos\n` +
       `• **Total hoje:** ${totalHoje.toLocaleString('pt-BR')} / ${meta.toLocaleString('pt-BR')} passos\n` +
       `• **Status:** ${pct}%\n` +
