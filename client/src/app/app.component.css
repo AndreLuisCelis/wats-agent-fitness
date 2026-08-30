@@ -1,28 +1,304 @@
-:host { display: block; min-height: 100dvh; }
-.pagina { min-height: 100dvh; display: grid; place-items: center; padding: 24px; background: radial-gradient(circle at top, #d9fbe8, #f6f8f7 45%, #e9efec); }
-.chat { width: min(100%, 720px); height: min(780px, calc(100dvh - 48px)); display: flex; flex-direction: column; overflow: hidden; border: 1px solid #dce5df; border-radius: 24px; background: #fff; box-shadow: 0 22px 60px #17382820; }
-.cabecalho { display: flex; align-items: center; gap: 12px; padding: 19px 22px; color: #fff; background: #14532d; }
-.marca { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 50%; background: #86efac; color: #14532d; font-weight: 900; font-size: 22px; }
-h1, p { margin: 0; } h1 { font-size: 1.05rem; } .cabecalho p { margin-top: 3px; color: #d1fae5; font-size: .82rem; }
-.status { margin-left: auto; font-size: .78rem; color: #d1fae5; } .status i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #86efac; }
-.historico { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 12px; background: #f8faf9; }
-.mensagem { max-width: 83%; align-self: flex-start; padding: 12px 15px; white-space: pre-wrap; line-height: 1.45; color: #1f2937; border-radius: 4px 16px 16px; background: #e8f5ec; }
-.mensagem.usuario { align-self: flex-end; color: #fff; border-radius: 16px 4px 16px 16px; background: #15803d; }
-.digitando { align-self: flex-start; padding: 13px 15px; border-radius: 16px; background: #e8f5ec; } .digitando b { display: inline-block; width: 6px; height: 6px; margin: 0 2px; border-radius: 50%; background: #4b5563; animation: pulse 1s infinite alternate; } .digitando b:nth-child(2) { animation-delay: .2s; } .digitando b:nth-child(3) { animation-delay: .4s; }
-.sugestoes { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 18px 12px; background: #f8faf9; }.sugestoes button { border: 1px solid #bbf7d0; border-radius: 999px; padding: 8px 12px; color: #166534; background: #fff; cursor: pointer; }
-.sugestoes-msg { display: flex; gap: 8px; flex-wrap: wrap; align-self: flex-start; max-width: 85%; margin: -6px 0 10px; } .sugestoes-msg button { border: 1px solid #bbf7d0; border-radius: 999px; padding: 7px 12px; color: #166534; background: #fff; cursor: pointer; font-size: .85rem; } .sugestoes-msg button:hover { background: #f0fdf4; } .sugestoes-msg button:disabled { opacity: .5; cursor: not-allowed; }
-.entrada { display: flex; gap: 10px; padding: 16px 18px; border-top: 1px solid #e5e7eb; }.entrada textarea { flex: 1; resize: none; padding: 10px; font: inherit; border: 1px solid #cbd5d1; border-radius: 12px; }.entrada button { padding: 0 18px; border: 0; border-radius: 12px; color: #fff; background: #15803d; font-weight: 700; cursor: pointer; }.entrada button:disabled { opacity: .45; cursor: not-allowed; }.aviso { padding: 0 18px 14px; color: #6b7280; font-size: .72rem; text-align: center; }
+/* Design system inspirado no ChatGPT (OpenAI): interface fullscreen monocromática,
+   conteúdo centralizado em 768px, bolhas discretas e composer arredondado. */
+
+.pagina {
+  min-height: 100dvh;
+  background: var(--bg);
+  color: var(--texto);
+}
+
+.tela {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+/* ---------- Cabeçalho ---------- */
+.cabecalho {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--borda);
+}
+
+.marca {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--botao);
+  color: var(--botao-texto);
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.marca.grande { width: 56px; height: 56px; border-radius: 18px; font-size: 1.6rem; }
+.titulo { font-size: 0.95rem; font-weight: 600; }
+.acoes { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  color: var(--texto-suave);
+}
+
+.status i { width: 7px; height: 7px; flex-shrink: 0; border-radius: 50%; background: var(--marca-eco); }
+
+.icone-botao {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--texto-secundario);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.icone-botao:hover { background: var(--hover); color: var(--texto); }
+.icone-botao svg { width: 18px; height: 18px; }
+.tema-flutuante { position: fixed; top: 16px; right: 16px; }
+
+.sair {
+  padding: 8px 14px;
+  border: 1px solid var(--borda);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--texto);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.sair:hover { background: var(--hover); }
+
+/* ---------- Histórico de mensagens ---------- */
+.historico { flex: 1; overflow-y: auto; padding: 24px 20px; }
+
+.conteudo {
+  width: 100%;
+  max-width: 768px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* Tela inicial, como a home do ChatGPT. */
+.vazio { margin: auto 0; padding: 40px 0; text-align: center; }
+.vazio h2 { margin: 0 0 10px; font-size: 1.75rem; font-weight: 600; letter-spacing: -0.02em; }
+.vazio p { margin: 0 0 22px; color: var(--texto-suave); font-size: 0.95rem; }
+
+.sugestoes { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+.sugestoes-msg { display: flex; flex-wrap: wrap; gap: 8px; margin-top: -8px; }
+
+.sugestoes button,
+.sugestoes-msg button {
+  padding: 9px 16px;
+  border: 1px solid var(--borda);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--texto-secundario);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.sugestoes button:hover,
+.sugestoes-msg button:hover { background: var(--hover); color: var(--texto); border-color: var(--borda-forte); }
+.sugestoes-msg button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Respostas do agente em texto puro; mensagens do usuário em bolha cinza. */
+.mensagem {
+  max-width: 100%;
+  padding: 2px 0;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  line-height: 1.7;
+  font-size: 1rem;
+  color: var(--texto);
+}
+
+.mensagem.usuario {
+  align-self: flex-end;
+  max-width: 75%;
+  padding: 12px 18px;
+  border-radius: 20px;
+  background: var(--bg-bolha);
+}
+
+.mensagem strong { font-weight: 600; }
+
+/* Barra de progresso estilizada, no lugar da arte feita com caracteres de bloco. */
+.barra-progresso {
+  width: 100%;
+  max-width: 340px;
+  height: 8px;
+  margin: 8px 0 2px;
+  border-radius: 999px;
+  background: var(--bg-bolha);
+  overflow: hidden;
+}
+
+.barra-progresso .preenchido {
+  display: block;
+  height: 100%;
+  min-width: 8px;
+  border-radius: 999px;
+  background: var(--marca-eco);
+  transition: width 0.4s ease;
+}
+
+.digitando { display: flex; align-items: center; gap: 5px; padding: 8px 2px; }
+.digitando b { width: 7px; height: 7px; border-radius: 50%; background: var(--texto-suave); animation: pulse 1.2s infinite ease-in-out; }
+.digitando b:nth-child(2) { animation-delay: 0.18s; }
+.digitando b:nth-child(3) { animation-delay: 0.36s; }
+
+@keyframes pulse {
+  0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-3px); }
+}
+
+/* ---------- Composer ---------- */
+.rodape { width: 100%; max-width: 768px; margin: 0 auto; padding: 6px 20px 0; }
+
+.entrada {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 10px 10px 10px 18px;
+  border: 1px solid var(--borda-forte);
+  border-radius: 28px;
+  background: var(--bg);
+  box-shadow: var(--sombra);
+  transition: border-color 0.15s ease;
+}
+
+.entrada:focus-within { border-color: var(--texto-suave); }
+
+.entrada textarea {
+  flex: 1;
+  resize: none;
+  max-height: 160px;
+  padding: 8px 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--texto);
+  line-height: 1.5;
+  overflow-y: auto;
+}
+
+.entrada textarea::placeholder { color: var(--texto-suave); }
+.entrada textarea:disabled { opacity: 0.6; }
+
+.enviar {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--botao);
+  color: var(--botao-texto);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.enviar svg { width: 18px; height: 18px; }
+.enviar:hover:not(:disabled) { background: var(--botao-hover); }
+.enviar:disabled { background: var(--bg-bolha); color: var(--texto-suave); cursor: not-allowed; }
+
+.aviso { margin: 0; padding: 10px 0 14px; color: var(--texto-suave); font-size: 0.72rem; text-align: center; }
+
+/* ---------- Autenticação ---------- */
+.autenticacao { position: relative; align-items: center; justify-content: center; padding: 32px 20px; }
+
+.auth-caixa { width: 100%; max-width: 360px; display: flex; flex-direction: column; }
+.auth-caixa .marca.grande { margin: 0 auto 20px; }
+.auth-titulo { margin: 0 0 6px; font-size: 1.6rem; font-weight: 600; letter-spacing: -0.02em; text-align: center; }
+.auth-subtitulo { margin: 0 0 26px; color: var(--texto-suave); font-size: 0.9rem; text-align: center; }
+
+.auth-form { display: flex; flex-direction: column; gap: 8px; }
+.auth-form label { margin-top: 8px; font-size: 0.8rem; font-weight: 600; color: var(--texto-secundario); }
+
+.auth-form input {
+  padding: 11px 14px;
+  border: 1px solid var(--borda-forte);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--texto);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.auth-form input::placeholder { color: var(--texto-suave); }
+.auth-form input:focus { outline: none; border-color: var(--texto); box-shadow: 0 0 0 3px var(--hover); }
+.auth-form input:disabled { opacity: 0.55; }
+
+.primario {
+  margin-top: 14px;
+  padding: 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--botao);
+  color: var(--botao-texto);
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease, opacity 0.15s ease;
+}
+
+.primario:hover:not(:disabled) { background: var(--botao-hover); }
+.primario:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.alternancia {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-bottom: 14px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--bg-bolha);
+}
+
+.alternancia button {
+  padding: 9px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--texto-secundario);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.alternancia button.ativo { background: var(--bg); color: var(--texto); font-weight: 600; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12); }
+.erro-auth { margin: 4px 0 0; color: var(--erro); font-size: 0.8rem; }
+
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
-.autenticacao { justify-content: center; padding: 28px; }
-.auth-form { display: flex; flex-direction: column; gap: 8px; max-width: 340px; width: 100%; margin: 0 auto; }
-.auth-form label { font-size: .8rem; font-weight: 700; color: #374151; }
-.auth-form input { padding: 11px 12px; font: inherit; border: 1px solid #cbd5d1; border-radius: 12px; }
-.auth-form input:focus { outline: 2px solid #86efac; border-color: #15803d; }
-.auth-form button { margin-top: 10px; padding: 12px; border: 0; border-radius: 12px; color: #fff; background: #15803d; font-weight: 700; cursor: pointer; }
-.auth-form button:disabled { opacity: .45; cursor: not-allowed; }
-.alternancia { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 12px; padding: 4px; border-radius: 12px; background: #eef2f0; }
-.alternancia button { padding: 8px; border: 0; border-radius: 9px; background: transparent; color: #4b5563; font-weight: 600; cursor: pointer; }
-.alternancia button.ativo { background: #fff; color: #14532d; box-shadow: 0 1px 4px #17382814; }
-.erro-auth { margin: 4px 0 0; color: #b91c1c; font-size: .8rem; }
-.sair { margin-left: 10px; padding: 7px 12px; border: 1px solid #d1fae5; border-radius: 999px; background: transparent; color: #d1fae5; font-size: .75rem; cursor: pointer; }
-.sair:hover { background: #166534; } @keyframes pulse { to { opacity: .25; transform: translateY(-2px); } } @media (max-width: 560px) { .pagina { padding: 0; } .chat { height: 100dvh; border-radius: 0; } .status { display: none; } }
+
+/* ---------- Responsivo ---------- */
+@media (max-width: 640px) {
+  .cabecalho { padding: 10px 14px; }
+  .status { display: none; }
+  .historico { padding: 18px 14px; }
+  .rodape { padding: 6px 12px 0; }
+  .mensagem.usuario { max-width: 88%; }
+  .vazio h2 { font-size: 1.4rem; }
+}

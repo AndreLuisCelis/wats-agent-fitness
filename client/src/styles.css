@@ -1,1 +1,58 @@
-* { box-sizing: border-box; } html, body { min-height: 100%; margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; } button, textarea { font: inherit; }
+/* Design tokens globais inspirados no design system do ChatGPT (OpenAI):
+   monocromático, contraste alto e tema claro/escuro via [data-theme]. */
+:root {
+  color-scheme: light;
+  --bg: #ffffff;              /* fundo principal */
+  --bg-bolha: #f4f4f4;        /* bolha do usuário / superfícies suaves */
+  --texto: #0d0d0d;           /* texto principal */
+  --texto-secundario: #5d5d5d;
+  --texto-suave: #8f8f8f;     /* placeholders, avisos, status */
+  --borda: #e5e5e5;
+  --borda-forte: #d9d9d9;     /* bordas de inputs e composer */
+  --hover: rgba(0, 0, 0, 0.06);
+  --botao: #0d0d0d;           /* botão primário (preto no claro) */
+  --botao-texto: #ffffff;
+  --botao-hover: #333333;
+  --erro: #e02e2a;
+  --marca-eco: #10a37f;       /* verde institucional OpenAI (indicador de status) */
+  --sombra: 0 4px 16px rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #212121;
+  --bg-bolha: #2f2f2f;
+  --texto: #ececec;
+  --texto-secundario: #b4b4b4;
+  --texto-suave: #8f8f8f;
+  --borda: rgba(255, 255, 255, 0.12);
+  --borda-forte: #424242;
+  --hover: rgba(255, 255, 255, 0.1);
+  --botao: #ffffff;           /* botão primário invertido (branco no escuro) */
+  --botao-texto: #0d0d0d;
+  --botao-hover: #e3e3e3;
+  --erro: #f87171;
+  --sombra: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  min-height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--texto);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body { transition: background-color 0.25s ease, color 0.25s ease; }
+
+button, input, textarea { font: inherit; }
+
+/* Scrollbar discreta, como no ChatGPT. */
+* { scrollbar-width: thin; scrollbar-color: var(--borda-forte) transparent; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: var(--borda-forte); border-radius: 999px; }
+::-webkit-scrollbar-track { background: transparent; }
