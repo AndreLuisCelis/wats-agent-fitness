@@ -21,6 +21,7 @@ Sem planilhas intermináveis. Sem sermão. Só um empurrãozinho inteligente par
 - Responder consultas e registros claros com regras locais, economizando chamadas à IA.
 - Criar conta, fazer login e manter a sessão do cliente web protegida por JWT.
 - Aplicar limites de uso por minuto e por dia.
+- Interface web com design minimalista inspirado no ChatGPT, incluindo tema claro e escuro.
 
 ## Uma conversa típica
 
@@ -60,7 +61,7 @@ Resposta simpática do FitBot
 | `src/limites.ts` | Rate limiting e orçamento diário da IA |
 | `src/types/fitness.ts` | Contratos TypeScript do domínio fitness |
 | `migrations/` | Estrutura versionada das tabelas do banco |
-| `client/` | Interface Angular do chat |
+| `client/` | Interface Angular do chat, com design estilo ChatGPT e tema claro/escuro |
 
 ### Stack
 
@@ -109,6 +110,8 @@ npm run client:start
 ```
 
 Abra [http://localhost:4200](http://localhost:4200), crie sua conta e comece a conversar.
+
+A interface segue um design minimalista inspirado no ChatGPT: tema claro e escuro (botão no cabeçalho; a preferência fica salva no navegador), mensagens do agente com negrito renderizado e barra de progresso gráfica para a meta de passos.
 
 Para gerar o build do cliente:
 
@@ -194,6 +197,19 @@ GET /webhook?hub.mode=subscribe&hub.verify_token=um-token-local&hub.challenge=ab
 
 Mais exemplos de Postman, respostas esperadas e diagnóstico estão em [DOCUMENTACAO.md](DOCUMENTACAO.md).
 
+## Solução de problemas
+
+### O front local não conversa com o worker local
+
+Se o navegador só recebe tempo limite esgotado, pode existir um processo `workerd` órfão de um `wrangler dev` anterior ocupando a porta 8787 — ela aceita conexões, mas o worker não responde. Localize e encerre o processo:
+
+```powershell
+Get-NetTCPConnection -LocalPort 8787 -State Listen | Select-Object OwningProcess
+Stop-Process -Id <PID> -Force
+```
+
+Depois, inicie o Worker novamente com `npm run dev` e recarregue a página. Confirme também que o `.dev.vars` mantém `FRONTEND_ORIGIN=http://localhost:4200`, origem liberada no CORS do Worker.
+
 ## Banco e migrações
 
 As migrações criam as estruturas para:
@@ -234,7 +250,7 @@ Antes de publicar o frontend, confira a URL do Worker em `client/src/environment
 
 ## Estado atual
 
-O núcleo do FitBot está funcionando: Worker, cliente web, autenticação, registros, consultas locais, Workers AI, D1 e integração preparada com a Meta.
+O núcleo do FitBot está funcionando: Worker, cliente web com design estilo ChatGPT (tema claro/escuro), autenticação, registros, consultas locais, Workers AI, D1 e integração preparada com a Meta.
 
 As próximas evoluções mais importantes são:
 

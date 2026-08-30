@@ -104,17 +104,33 @@ whatsapp-fitness-agent/
 ├── package-lock.json
 ├── tsconfig.json
 ├── wrangler.jsonc
+├── .dev.vars                 (segredos locais de desenvolvimento)
 ├── DOCUMENTACAO.md
 ├── migrations/
-│   └── 0001_create_fitness_tables.sql
-└── src/
-    ├── index.ts
-    ├── agent/
-    │   └── fitness-agent.ts
-  ├── repositories/
-  │   └── fitness-repository.ts
-    └── types/
-        └── fitness.ts
+│   ├── 0001_create_fitness_tables.sql
+│   ├── 0002_create_food_tables.sql
+│   ├── 0003_add_auth_and_limits.sql
+│   └── 0004_usuarios_nome_email_senha.sql
+├── src/
+│   ├── index.ts
+│   ├── agent/
+│   │   └── fitness-agent.ts
+│   ├── repositories/
+│   │   └── fitness-repository.ts
+│   ├── auth.ts
+│   ├── limites.ts
+│   └── types/
+│       └── fitness.ts
+└── client/                   (interface Angular do chat)
+    └── src/
+        ├── index.html        (fonte Inter e script de tema anti-flash)
+        ├── styles.css        (tokens de tema claro/escuro)
+        ├── environments/     (URL da API local e de produção)
+        └── app/
+            ├── app.component.ts   (telas de chat e login + renderização das mensagens)
+            ├── app.component.css  (design system estilo ChatGPT)
+            └── services/
+                └── fitness-chat.service.ts
 ```
 
 ### `src/index.ts`
@@ -449,7 +465,7 @@ O resultado é arredondado, salvo em `registros_treino` pelo `FitnessRepository`
 - o incremento registrado agora (`+2.000 passos`);
 - o total acumulado do dia (`8.000 / 7.000 passos`);
 - o percentual da meta sobre o **total do dia**, limitado a 100%;
-- uma barra visual com 10 posições;
+- uma barra visual com 10 posições desenhada com caracteres de bloco — no WhatsApp ela chega como texto; no cliente web, o Angular converte essa linha em uma barra de progresso estilizada em CSS;
 - quantos passos faltam ou uma mensagem de meta alcançada.
 
 Também é usado `toLocaleString('pt-BR')` para exibir os números no formato brasileiro.
@@ -796,6 +812,10 @@ Até agora, foram concluídas estas etapas:
 46. A tela de login/registro do Angular foi adicionada, com sessão persistente em `localStorage`, botão Sair e tratamento de sessão expirada (401) e limite atingido (429).
 47. A migração `0003_add_auth_and_limits.sql` (tabelas `usuarios` e `contadores`) foi aplicada nos ambientes local e remoto, e o segredo `AUTH_SECRET` foi configurado em produção.
 48. Registros comuns passaram a ser identificados por regras locais (`interpretarRegistroLocal`), antes da IA e também no fallback heurístico: água, passos, alimentação e treinos (com detecção de modalidade e conversão de litros/km/minutos). Assim, "fiz 30 min de corrida" é gravado mesmo com o Workers AI fora do ar e sem consumir o orçamento diário de IA.
+49. A interface do cliente web foi redesenhada seguindo o design system do ChatGPT (OpenAI): layout fullscreen com conteúdo centralizado em 768 px, visual monocromático, tela inicial com título centralizado e chips de sugestão, mensagens do agente em texto puro, mensagens do usuário em bolha cinza arredondada e composer arredondado com botão circular de enviar.
+50. O cliente ganhou tema claro e escuro controlado pelo atributo `[data-theme]` no `<html>`, com tokens CSS em `styles.css`, botão de alternância (sol/lua) no cabeçalho e na tela de login, preferência persistida em `localStorage` (chave `fitbot-tema`) e script inline no `index.html` que aplica o tema antes do Angular carregar, evitando flash de cor errada.
+51. As respostas do agente passaram a ser renderizadas pelo cliente: `**negrito**` é convertido em `<strong>` real (com HTML escapado e sanitização do Angular), e a barra de progresso desenhada com caracteres de bloco (`[▓▓▓▓▓▓░░░░]`) é convertida em uma barra de progresso em CSS, arredondada e com atributos ARIA — os asteriscos e os caracteres de bloco não aparecem mais na tela. O texto original é mantido para o WhatsApp.
+52. Foi corrigido na confirmação de passos um emoji de tom de pele órfão (🏽 sozinho), que renderizava como um quadrado; a mensagem agora usa 🖐🏽 completo.
 
 ## Capítulo 9 — O que ainda não foi feito
 
