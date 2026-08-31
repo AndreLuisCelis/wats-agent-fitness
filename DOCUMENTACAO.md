@@ -1,54 +1,22 @@
 # WhatsApp Fitness Agent
 
-> Um guia de bordo para construir, passo a passo, um agente de fitness conectado ao WhatsApp.
+> Um assistente de fitness que transforma mensagens simples em acompanhamento diário de treinos, passos, hidratação e alimentação.
 
-## 1. Sobre este documento
+## Visão geral do projeto
 
-Este arquivo funciona como um pequeno livro didático sobre o projeto. Ele explica, com calma e sem pressupor experiência, tudo o que existe até o momento. A ideia é que uma pessoa iniciante consiga entender:
+O `whatsapp-fitness-agent` é uma aplicação que conversa com usuários pelo WhatsApp e também oferece uma interface web em Angular. A pessoa pode escrever algo como “fiz 30 minutos de corrida”, “bebi 500 ml de água” ou “o que comi hoje?”, e o sistema interpreta a mensagem, registra os dados e responde com um resumo útil e motivador.
 
-- qual é o objetivo técnico da estrutura atual;
-- para que serve cada arquivo;
-- quais ferramentas foram preparadas;
-- o que já está funcionando;
-- o que ainda precisa ser desenvolvido.
+O backend roda como um **Cloudflare Worker**. Ele recebe as requisições, encaminha cada mensagem para o agente de fitness, consulta ou atualiza o banco Cloudflare D1 e envia a resposta de volta. Quando a situação pede uma interpretação mais flexível, o Worker usa o Workers AI; perguntas e registros claros podem ser resolvidos por regras locais, com mais rapidez e sem consumir a cota de inteligência artificial.
 
-A documentação descreve o estado real do projeto. A base foi configurada, o agente já possui lógica própria, o Worker recebe eventos do WhatsApp, tenta enviar respostas pela Meta Graph API e persiste os dados no Cloudflare D1. Algumas validações de produção ainda estão pendentes.
+O projeto já conta com lógica própria para treinos, passos, água, alimentos e consultas do dia. Também possui autenticação no cliente web, limite de mensagens por usuário, orçamento diário de IA e persistência dos registros no D1. A integração real com o WhatsApp ainda depende da configuração de uma conta Meta Business, das credenciais da plataforma e de algumas validações de produção.
 
 > **Situação atual:** o desenvolvimento do Worker pode continuar sem uma conta Meta Business. Porém, a integração real com o WhatsApp depende da criação de uma conta Meta Business, de um aplicativo na plataforma da Meta e da configuração do WhatsApp Business Platform.
 
-## Como ler este guia
+## Objetivo do projeto
 
-Pense no projeto como uma casa que acabou de receber sua planta e suas ferramentas. O terreno está preparado, os cômodos foram separados, mas ainda falta construir as paredes e instalar os móveis.
+Um Worker é uma função executada na infraestrutura da Cloudflare, sem a necessidade de manter um servidor tradicional ligado. Nesse ambiente, o agente recebe uma mensagem, entende a intenção, executa a ação necessária e monta uma resposta que faça sentido para aquela conversa.
 
-Por isso, este documento usa três ideias simples:
-
-- **o que é**: a explicação da tecnologia;
-- **para que serve**: o motivo de ela existir neste projeto;
-- **o que acontece agora**: o estado concreto da implementação.
-
-Não é necessário memorizar tudo de uma vez. Comece pelo mapa abaixo e volte aos capítulos conforme cada parte for sendo implementada.
-
-### Mapa da jornada
-
-1. Entender o objetivo do agente.
-2. Conhecer a estrutura de pastas.
-3. Aprender o papel do Node.js e do npm.
-4. Entender TypeScript e a checagem de tipos.
-5. Entender Cloudflare Workers e Wrangler.
-6. Acompanhar as implementações já realizadas.
-7. Testar o webhook localmente.
-8. Usar Git para registrar a evolução.
-9. Publicar com segurança.
-
-> **Nota importante:** configuração não é implementação. Ter um binding de IA configurado, por exemplo, prepara uma porta; ainda será necessário escrever o código que passa por ela.
-
-## Capítulo 1 — Objetivo do projeto
-
-O projeto se chama `whatsapp-fitness-agent`. Pelo nome e pela estrutura preparada, ele será um agente relacionado a fitness que poderá atender usuários por meio do WhatsApp.
-
-A aplicação foi preparada para rodar como um **Cloudflare Worker**. Um Worker é uma função executada na infraestrutura da Cloudflare, sem a necessidade de manter um servidor tradicional ligado.
-
-A arquitetura esperada, quando a implementação começar, será parecida com esta:
+A arquitetura do projeto funciona assim:
 
 ```text
 Mensagem do usuário no WhatsApp
@@ -70,7 +38,7 @@ O recebimento, o processamento e o envio da resposta já existem no código. O W
 
 ### Uma conversa em termos de software
 
-Quando uma mensagem chega, o sistema precisará responder a algumas perguntas em ordem:
+Quando uma mensagem chega, o sistema responde a algumas perguntas em ordem:
 
 1. A mensagem veio de uma fonte confiável?
 2. Qual é o texto e quem enviou?
@@ -78,7 +46,7 @@ Quando uma mensagem chega, o sistema precisará responder a algumas perguntas em
 4. A resposta precisa usar inteligência artificial?
 5. Como devolver uma resposta clara e segura ao WhatsApp?
 
-Essa lista é o embrião do fluxo da aplicação. Ela também mostra por que o projeto foi separado em entrada, agente e tipos: cada parte terá uma responsabilidade compreensível.
+Esse fluxo explica por que o projeto foi separado em entrada, agente e tipos: cada parte tem uma responsabilidade clara e pode evoluir sem transformar o restante da aplicação em um novelo de fios.
 
 ### O que é necessário para usar o WhatsApp em produção
 
@@ -839,7 +807,7 @@ Os seguintes itens ainda estão pendentes:
 
 Git é um sistema de controle de versão. Ele registra fotografias organizadas do projeto ao longo do tempo, chamadas **commits**. Assim, é possível saber o que mudou, quando mudou e por quê.
 
-### O que aconteceu agora
+### Histórico do repositório
 
 O comando abaixo foi executado:
 
@@ -847,7 +815,7 @@ O comando abaixo foi executado:
 git init
 ```
 
-Esse comando criou um repositório Git local na pasta do projeto. Desde então, já foram registrados commits com a estrutura inicial, a documentação, o `.gitignore` e os tipos do domínio fitness.
+Esse comando criou um repositório Git local na pasta do projeto. Desde então, já foram registrados commits com a estrutura inicial, o `.gitignore` e os tipos do domínio fitness.
 
 Arquivos novos aparecem como não rastreados (`??`) até serem adicionados com `git add`. Depois do commit, deixam de ser apenas arquivos locais e passam a fazer parte do histórico do projeto.
 
